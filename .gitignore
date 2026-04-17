@@ -1,0 +1,31 @@
+﻿# Secrets and credentials
+*.env
+*.pem
+*.key
+secrets/
+ansible/vault_password.txt
+ansible/*.vault
+
+# Terraform state (contains sensitive data)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
+
+# Internal notes (kept in OneDrive, not repo)
+project-knowledge-base.md
