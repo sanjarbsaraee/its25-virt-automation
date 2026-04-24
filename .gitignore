@@ -1,4 +1,4 @@
-﻿# Secrets and credentials
+# Secrets and credentials
 *.env
 *.pem
 *.key
@@ -6,13 +6,20 @@ secrets/
 ansible/vault_password.txt
 ansible/*.vault
 
-# Terraform state (contains sensitive data)
+# Terraform specific (contains sensitive data)
+.terraform/
 *.tfstate
 *.tfstate.*
-.terraform/
-.terraform.lock.hcl
-terraform.tfvars
-*.auto.tfvars
+*.tfvars
+*.tfplan
+crash.log
+crash.*.log
+
+# Local Terraform overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # IDE files
 .vscode/
@@ -24,8 +31,25 @@ terraform.tfvars
 .DS_Store
 Thumbs.db
 
-# Build artifacts
+# Build artifacts and logs
 *.log
 
-# Internal notes (kept in OneDrive, not repo)
+# Internal notes
 project-knowledge-base.md
+
+# Legacy virtualization
+.vagrant/
+
+# Scripting and dependencies
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+
+# Ansible
+*.retry
+
+# SSH keys (Ignore private, allow public)
+.ssh/*
+!.ssh/*.pub
