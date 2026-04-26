@@ -14,13 +14,17 @@ terraform {
   }
 
   # "required_providers" lists the plugins Terraform needs to talk
-  # to external systems. bpg/proxmox is the community plugin that
-  # speaks to the Proxmox API. Pinning to an exact version protects
-  # against breaking changes between 0.x minor releases.
+  # to external systems. Pinning bpg/proxmox to an exact version
+  # protects against breaking changes between 0.x minor releases.
+  # The Infisical provider uses ~> 0.16 to allow patch updates.
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
       version = "0.103.0"
+    }
+    infisical = {
+      source  = "infisical/infisical"
+      version = "~> 0.16"
     }
   }
 }
