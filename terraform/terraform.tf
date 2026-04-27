@@ -1,11 +1,8 @@
-# Engine and backend configuration. Configures Terraform itself,
-# not the infrastructure it manages.
+# Configures Terraform itself, not the infrastructure it manages.
 
 terraform {
-  # "cloud" tells Terraform to store state in HCP Terraform instead
-  # of a local file. State is the JSON file Terraform uses to track
-  # what exists in real life. Storing it in HCP lets the team share
-  # the same state across machines.
+  # "cloud" stores state in HCP Terraform instead of a local file.
+  # The team shares one state across machines that way.
   cloud {
     organization = "its25-virt-automation"
     workspaces {
@@ -13,10 +10,9 @@ terraform {
     }
   }
 
-  # "required_providers" lists the plugins Terraform needs to talk
-  # to external systems. Pinning bpg/proxmox to an exact version
-  # protects against breaking changes between 0.x minor releases.
-  # The Infisical provider uses ~> 0.16 to allow patch updates.
+  # Pinning bpg/proxmox to an exact version protects against
+  # breaking changes between 0.x minor releases. Infisical uses
+  # "~> 0.16" to allow patch updates.
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"

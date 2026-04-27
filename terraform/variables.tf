@@ -1,5 +1,5 @@
-# Input variables. Values come from terraform.tfvars locally, or
-# workspace variables in HCP Terraform when run in the cloud.
+# Input variables. Defaults defined here, overrides in
+# terraform.tfvars or HCP Terraform workspace variables.
 
 # ---------------------------------------------------------------------------
 # Proxmox host
@@ -12,7 +12,7 @@ variable "proxmox_endpoint" {
 }
 
 variable "proxmox_node_name" {
-  description = "Name of the Proxmox node as it appears in the web UI. Default for a single-node install is 'pve'."
+  description = "Proxmox node name as shown in the web UI."
   type        = string
   default     = "pve"
 }
@@ -28,12 +28,12 @@ variable "proxmox_node_address" {
 # ---------------------------------------------------------------------------
 
 variable "infisical_project_id" {
-  description = "Infisical project ID where secrets live. Found in Infisical UI under project Settings."
+  description = "Infisical project UUID where secrets live."
   type        = string
 }
 
 variable "infisical_environment" {
-  description = "Infisical environment slug, e.g. 'dev'. Found in Infisical UI under Environments."
+  description = "Infisical environment slug to read secrets from."
   type        = string
   default     = "dev"
 }
