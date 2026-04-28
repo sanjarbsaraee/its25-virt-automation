@@ -7,10 +7,19 @@ Infrastructure-as-code project on Proxmox VE using Terraform for provisioning an
 The project builds a virtualized environment in five iterations, each adding a layer of capability. Every iteration is fully automated, meaning a destroy-and-rebuild cycle produces the same environment every time.
 
 - **Terraform** provisions VMs and network resources on Proxmox, using the `bpg/proxmox` provider.
-- **Ansible** configures the VMs after they boot, using the `community.proxmox` collection.
+- **Ansible** configures the VMs after they boot. Playbooks run from the control-node VM, not from operator laptops.
 - **Infisical** stores secrets (API tokens, private SSH keys) and serves them to Terraform at run time, so no secrets live on disk in plain text.
 - **HCP Terraform** stores remote state and orchestrates plan and apply runs. A self-hosted agent on the Proxmox host executes the actual Terraform operations, since HCP's cloud runners cannot reach the Tailscale network where the host lives.
 - **Tailscale** provides secure remote access to the Proxmox host without exposing port 8006 to the internet.
+
+## Design philosophy
+
+This is a course capstone targeting the highest grade (VG), not a production system. Two principles guide every architecture choice:
+
+1. **VG-criteria-driven design.** Every choice maps to a stated grade requirement: scalability, robustness, redundancy, or security. If a choice does not, it is dropped.
+2. **Minimum effective dose.** Complexity is added only when it solves a concrete present problem, never a hypothetical future one.
+
+Best practice is contextual. What suits a production team of ten can be overengineering for a two-student course project.
 
 ## Architecture
 
@@ -24,35 +33,35 @@ The project builds a virtualized environment in five iterations, each adding a l
                   |    |
                   |    +-- HCP Terraform agent (systemd service)
                   |
-       +----------+----------+
-       |          |          |
-     web-01   app-01     db-01          Application VMs,
-     Nginx    Flask     Postgres        deployed per iteration
+       +----------+----------+----------+
+       |          |          |          |
+   control-node  web-01   db-01      ...           Application VMs
+   (Ansible)    Nginx    Postgres                  deployed per iteration
 ```
 
-Terraform runs flow: `terraform apply` from a laptop → HCP Terraform → agent on Proxmox host → bpg/proxmox provider → Proxmox API → VM created.
+Two-command operator flow per iteration: `terraform apply` from a laptop, then SSH to the control-node and run `ansible-playbook site.yml`. Cloud-init installs Ansible, git, and python3-pip on the control-node so the second command works immediately after first boot.
 
 ## Repository structure
 
 ```
 .
 ├── docs/
-│   ├── setup/                  How we set things up, step by step
-│   ├── architecture/           Design decisions and rationale
-│   └── iterations/             What was delivered per iteration
-├── terraform/                  VM and network provisioning
-│   ├── terraform.tf            Backend and required_providers
-│   ├── providers.tf            Provider configuration
-│   ├── variables.tf            Input variables
-│   ├── data.tf                 Data sources and locals
-│   ├── main.tf                 Resources
-│   ├── outputs.tf              Outputs
-│   └── .ssh/                   Public SSH keys (private keys live in Infisical)
-└── ansible/                    Configuration management
-    ├── inventory/
+│   ├── setup/                       How we set things up, step by step
+│   ├── architecture/                Design decisions and rationale
+│   └── changes-from-jims-base.md    Iter 1 deltas from the base branch
+├── terraform/                       VM and network provisioning
+│   ├── terraform.tf                 Backend and required_providers
+│   ├── providers.tf                 Provider configuration
+│   ├── variables.tf                 Input variables
+│   ├── data.tf                      Data sources and locals
+│   ├── main.tf                      Resources
+│   ├── outputs.tf                   Outputs
+│   ├── ansible-bootstrap.yaml       Cloud-init snippet template
+│   └── .ssh/                        Public SSH keys (private keys live in Infisical)
+└── ansible/                         Configuration management
+    ├── inventories/prod/
     ├── playbooks/
-    ├── roles/
-    └── group_vars/
+    └── roles/
 ```
 
 The `terraform/` directory follows HashiCorp's Standard Module Structure.
@@ -61,7 +70,7 @@ The `terraform/` directory follows HashiCorp's Standard Module Structure.
 
 | # | Iteration | Status |
 |---|-----------|--------|
-| 1 | Foundation and VPN access | Terraform foundation complete, Ansible pending |
+| 1 | Foundation and VPN access | Functionally complete (2026-04-27). Ansible structure in git done and merged to main. |
 | 2 | Web server and database, three-tier | Planned |
 | 3 | Load balancing and scalability | Planned |
 | 4 | Firewall and network segmentation | Planned |
@@ -70,6 +79,7 @@ The `terraform/` directory follows HashiCorp's Standard Module Structure.
 ## Documentation
 
 - [Tailscale setup on the Proxmox host](docs/setup/tailscale-on-host.md)
+- [Proxmox host setup](docs/setup/proxmox-host.md)
 
 More documents are added as the project progresses.
 
