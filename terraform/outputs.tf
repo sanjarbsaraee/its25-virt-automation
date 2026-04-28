@@ -1,6 +1,4 @@
-# Output values. Exposes computed values for other tools — the
-# Ansible inventory in iteration 2 reads control_node_ip to know
-# which host to connect to.
+# Outputs. Values consumed by the Ansible inventory.
 
 output "control_node_ip" {
   description = "IP address of the control-node VM."
