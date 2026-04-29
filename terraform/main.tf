@@ -20,9 +20,20 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
 # Control-node VM. Cloned from template 9000 and configured
 # from the ansible_bootstrap snippet on first boot.
 resource "proxmox_virtual_environment_vm" "control_node" {
-  name      = "control-node"
+  # Workspace-aware naming. Default workspace builds production
+  # control-node. Dev workspaces append the workspace name so
+  # parallel dev VMs do not collide with each other or main.
+  name      = terraform.workspace == "its25-virt-automation" ? "control-node" : "control-node-${terraform.workspace}"
   node_name = var.proxmox_node_name
-  vm_id     = 511
+ 
+  # Workspace-aware vm_id. Main workspace owns 510. Sanjar's
+  # dev maps to 521, Jim's to 522. Hard-coded mapping until
+  # iter 2 needs more entries.
+  vm_id = lookup({
+    "its25-virt-automation" = 510
+    "its25-sanjar-dev" = 521
+    "its25-jim-dev" = 522
+  }, terraform.workspace, 510)
 
   # "enabled" controls whether Proxmox queries qemu-guest-agent.
   # True asks the VM for IPs. False skips the call. Template
@@ -65,7 +76,14 @@ resource "proxmox_virtual_environment_vm" "control_node" {
 
     ip_config {
       ipv4 {
-        address = "192.168.50.10/24"
+        # Workspace-aware IP. Main owns 192.168.50.10. Dev
+        # workspaces use .21 and .22. Parallel dev VMs need
+        # unique IPs so they do not collide on the LAN.
+        address = lookup({
+          "its25-virt-automation"   = "192.168.50.10/24"
+          "its25-sanjar-dev"        = "192.168.50.21/24"
+          "its25-jim-dev"           = "192.168.50.22/24"
+        }, terraform.workspace, "192.168.50.10/24")
         gateway = "192.168.50.1"
       }
     }
