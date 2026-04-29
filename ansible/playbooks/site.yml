@@ -1,4 +1,3 @@
----
 # Top-level playbook for the ITS25 capstone. Iter 1 runs readiness
 # checks on the control node. Iter 2+ adds plays for web and db
 # below this one.
@@ -21,26 +20,20 @@
     - name: Confirm Python and connectivity
       ansible.builtin.ping:
 
-    # "register" stores task output in a variable. The next task
-    # reads from that variable to print the version line.
+    # "register" stores task output in a variable. We use ansible_cli
+    # not ansible_version because ansible_version is Ansible's own
+    # built-in variable. The collision shadows our registered value.
     - name: Capture Ansible version
       ansible.builtin.command: ansible --version
       changed_when: false
-      register: ansible_version
+      register: ansible_cli
 
-    # Debug task. Prints the entire ansible_version object so we
-    # see which keys actually exist. Remove once the show task
-    # below works on its own.
-    - name: Debug ansible_version
-      ansible.builtin.debug:
-        var: ansible_version
-
-    # "| first" is a Jinja filter that returns the first element
-    # of a list. Using [0] index notation can fail at parse time
-    # on some Ansible versions, so | first.
+    # "| first" is a Jinja filter that returns the first element of
+    # a list. Index notation [0] can fail at parse time on some
+    # Ansible versions, so | first.
     - name: Show Ansible version
       ansible.builtin.debug:
-        msg: "{{ ansible_version.stdout_lines | first }}"
+        msg: "{{ ansible_cli.stdout_lines | first }}"
 
     - name: Capture Git version
       ansible.builtin.command: git --version
