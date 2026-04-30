@@ -1,31 +1,25 @@
-# Tasks that verify the control-node is ready to run Ansible playbooks
-# against managed nodes. Runs on the control-node only. Iter 2+
-# extends this with checks for new tools as they get added.
+# Verifies the control-node has Ansible, Git and Python ready
+# before iter 2+ uses it to push tasks to other VMs.
 
-# "command" runs a raw shell command. Use it when no module fits.
-# cloud-init blocks the play until first-boot setup finishes,
-# so a later task never races against an unfinished system.
+# cloud-init runs first-boot setup. We wait so later tasks
+# never race against an unfinished system.
 - name: Wait for cloud-init to finish
   ansible.builtin.command: cloud-init status --wait
   changed_when: false
   timeout: 60
 
-# "ping" is Ansible's connectivity check. It confirms SSH works,
-# Python runs, and modules execute. Not an ICMP ping.
+# Ansible's ping confirms SSH, Python, and modules work.
+# Not an ICMP ping.
 - name: Confirm Python and connectivity
   ansible.builtin.ping:
 
-# "register" stores task output in a variable. We use ansible_cli
-# not ansible_version because ansible_version is Ansible's own
-# built-in variable. The collision shadows our registered value.
+# ansible_version is a built-in. We register as ansible_cli
+# to avoid shadowing it.
 - name: Capture Ansible version
   ansible.builtin.command: ansible --version
   changed_when: false
   register: ansible_cli
 
-# "| first" is a Jinja filter that returns the first element of
-# a list. Index notation [0] can fail at parse time on some
-# Ansible versions, so | first.
 - name: Show Ansible version
   ansible.builtin.debug:
     msg: "{{ ansible_cli.stdout_lines | first }}"
@@ -39,8 +33,8 @@
   ansible.builtin.debug:
     msg: "{{ git_version.stdout_lines | first }}"
 
-# ansible_facts populates from gather_facts in the play. No
-# command needed since the facts are already collected.
+# Filters mounts for "/" and reads its free space.
+# ansible_facts comes from gather_facts in site.yml.
 - name: Show disk space on root
   ansible.builtin.debug:
     msg: >-

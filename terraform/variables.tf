@@ -28,7 +28,7 @@ variable "proxmox_node_address" {
 # ---------------------------------------------------------------------------
 
 variable "infisical_project_id" {
-  description = "Infisical project UUID where secrets live."
+  description = "Infisical project UUID."
   type        = string
 }
 

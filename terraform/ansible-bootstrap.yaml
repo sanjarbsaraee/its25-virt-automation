@@ -1,41 +1,37 @@
 #cloud-config
-# Cloud-init bootstrap for ITS25 VMs. Runs once on first boot.
+# Cloud-init config. Proxmox passes this to the VM at first boot.
 
 users:
   - name: admin
 
-    # "groups" puts the user in sudo so it can run privileged
-    # commands. Ansible's "become: true" relies on this.
+    # Sudo group gives admin privileged commands, needed for
+    # Ansible's "become: true".
     groups: sudo
 
     shell: /bin/bash
 
-    # "NOPASSWD" lets sudo run without a prompt. The alternative
-    # is a password Ansible types via vault, which adds a moving
-    # part. Key-based SSH already gates the account, so NOPASSWD.
+    # Skips the sudo password prompt. Alternative is a vault-
+    # stored password — extra moving part. SSH keys already gate the account.
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
 
     ssh_authorized_keys:
       - ${sanjar_key}
       - ${jim_key}
 
-# "package_update" runs apt update once before any install.
+# Updates the apt cache before any install runs.
 package_update: true
 
-# "package_upgrade" upgrades every installed package once.
-# Catches security fixes since the template image was built.
+# Upgrades every installed package. Picks up fixes published
+# since the template image was built.
 package_upgrade: true
 
-# Minimum packages to bootstrap Ansible workflows from this VM.
 packages:
   - ansible
   - git
   - python3-pip
 
-# "runcmd" runs shell commands after package install. We clone
-# the repo here so the playbook lives on disk before the operator
-# logs in. The "chown" hands ownership to admin, since runcmd
-# runs as root by default.
+# Clones the repo so the playbook is on disk before login.
+# "sudo -u admin" makes admin own the cloned files. Default in runcmd is root.
 runcmd:
   - sudo -u admin git clone https://github.com/sanjarbsaraee/its25-virt-automation.git /home/admin/its25-virt-automation
   - sudo -u admin ansible-galaxy collection install -r /home/admin/its25-virt-automation/ansible/collections/requirements.yml

@@ -1,8 +1,7 @@
 # Outputs. Values consumed by the Ansible inventory.
 
-# IP read from the resource itself, not hard-coded. Workspace
-# changes pick up automatically. Hard-coding would lie about
-# dev workspaces, where the IP differs from main.
+# IPs read from the resource itself, not hard-coded. Hard-coding
+# would lie about dev workspaces, where the IP differs from main.
 output "control_node_ip" {
   description = "IP address of the control-node VM."
   value       = proxmox_virtual_environment_vm.control_node.initialization[0].ip_config[0].ipv4[0].address

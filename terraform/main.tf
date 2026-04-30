@@ -1,8 +1,7 @@
 # Resources. Defines what Terraform creates on the Proxmox host.
 
-# "env_config" maps each workspace to a base for VM IDs and IPs.
-# Main owns 510-series. Dev workspaces shift both ranges so
-# parallel VMs do not collide on the host or LAN.
+# Maps each workspace to a base for VM IDs and IPs. Dev workspaces
+# shift both ranges so parallel VMs do not collide on the host.
 locals {
   env_config = {
     "its25-virt-automation" = { name_suffix = "",        vm_base = 500, ip_base = 0 }
@@ -10,9 +9,8 @@ locals {
     "its25-jim-dev"         = { name_suffix = "-jim",    vm_base = 700, ip_base = 200 }
   }
 
-  # "lookup" returns the entry for the active workspace. It
-  # falls back to the main config if the name is unknown, so
-  # an unset workspace cannot accidentally collide with main.
+  # Falls back to main if the workspace is unknown, so an unset
+  # workspace cannot accidentally collide with main.
   env = lookup(local.env_config, terraform.workspace, local.env_config["its25-virt-automation"])
 }
 
@@ -23,8 +21,7 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   node_name    = var.proxmox_node_name
 
   source_raw {
-    # "templatefile" reads the YAML and substitutes ${ }
-    # markers. Both public keys land in the snippet.
+    # templatefile reads the YAML and substitutes ${ } markers.
     data = templatefile("${path.module}/ansible-bootstrap.yaml", {
       sanjar_key = file("${path.module}/.ssh/sanjar_vm_key.pub"),
       jim_key    = file("${path.module}/.ssh/jim_vm_key.pub"),
@@ -33,20 +30,16 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   }
 }
 
-# Control-node VM. Cloned from template 9000 and configured
-# from the ansible_bootstrap snippet on first boot.
+# Control-node VM. Cloned from template 9000 and configured from
+# the ansible_bootstrap snippet on first boot.
 resource "proxmox_virtual_environment_vm" "control_node" {
-  # Name suffix tags the owner. Main is "", dev workspaces
-  # append "-sanjar" or "-jim".
   name      = "control-node${local.env.name_suffix}"
   node_name = var.proxmox_node_name
-
-  # vm_id is base + 10. Main 510, Sanjar 610, Jim 710.
-  vm_id = local.env.vm_base + 10
+  vm_id     = local.env.vm_base + 10
 
   # "enabled" controls whether Proxmox queries qemu-guest-agent.
-  # True asks the VM for IPs. False skips the call. Template
-  # 9000 lacks the agent, so false.
+  # True asks the VM for IPs. The Debian cloud-image lacks the
+  # agent, so false.
   agent {
     enabled = false
   }
@@ -54,9 +47,8 @@ resource "proxmox_virtual_environment_vm" "control_node" {
   clone {
     vm_id = var.template_vm_id
 
-    # "full" picks clone mode. True copies the whole disk.
-    # False shares blocks via copy-on-write. Full is independent
-    # of the template, so true.
+    # "full" picks clone mode. True copies the whole disk. False
+    # shares blocks via copy-on-write but stays tied to template.
     full = true
   }
 
@@ -72,35 +64,32 @@ resource "proxmox_virtual_environment_vm" "control_node" {
   network_device {
     bridge = var.lan_bridge
 
-    # "virtio" uses the paravirtualized driver shipped with
-    # the Debian cloud image. "e1000" emulates a real NIC and
-    # is slower, so virtio.
+    # virtio is the paravirtualized driver in the Debian cloud
+    # image. e1000 emulates a real NIC, which is ~30% slower.
     model = "virtio"
   }
 
   initialization {
-    # Snippet drives users, packages, and SSH keys. The block
+    # The snippet drives users, packages, and SSH keys. The block
     # here only sets what the snippet cannot: static IP and DNS.
     user_data_file_id = proxmox_virtual_environment_file.ansible_bootstrap.id
 
     ip_config {
       ipv4 {
-        # Last octet is ip_base + 10. Main .10, Sanjar .110,
-        # Jim .210.
         address = "${var.lan_subnet}.${local.env.ip_base + 10}/24"
         gateway = var.lan_gateway
       }
     }
 
     # Proxmox pushes the host's resolv.conf into cloud-init,
-    # which sets eth0 DNS to Tailscale MagicDNS. That resolver
-    # answers tailnet names, not deb.debian.org, so override.
+    # which sets DNS to Tailscale MagicDNS. That resolver does
+    # not answer deb.debian.org, so override here.
     dns {
       servers = ["1.1.1.1", "8.8.8.8"]
     }
   }
 
-  # Cloud-init mutates fields after first boot. Proxmox
+  # Cloud-init mutates fields after first boot, and Proxmox
   # regenerates MAC on clone. Ignoring stops false drift.
   lifecycle {
     ignore_changes = [
@@ -129,7 +118,7 @@ resource "proxmox_virtual_environment_vm" "web_01" {
     cores = 2
   }
 
-  # Memory in MiB. 1024 fits Nginx plus a small static site.
+  # 1024 MiB fits Nginx plus a small static site.
   memory {
     dedicated = 1024
   }
@@ -147,10 +136,8 @@ resource "proxmox_virtual_environment_vm" "web_01" {
       }
     }
 
-    # "user_account" injects SSH keys into the cloud-init default
-    # user. The control_node uses ansible_bootstrap.yaml instead.
-    # Iter 2 VMs use this simpler form because they have no
-    # snippet yet.
+    # Injects SSH keys into the cloud-init default user. The
+    # control_node uses ansible_bootstrap.yaml instead.
     user_account {
       username = "admin"
       keys     = local.vm_admin_public_keys
@@ -185,12 +172,12 @@ resource "proxmox_virtual_environment_vm" "db_01" {
     cores = 2
   }
 
-  # Memory in MiB. 1024 covers PostgreSQL with a small dataset.
+  # 1024 MiB covers PostgreSQL with a small dataset.
   memory {
     dedicated = 1024
   }
 
-  # Extra disk for database storage. 20 GiB on local-lvm.
+  # Extra 20 GiB on local-lvm for database storage.
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi0"
