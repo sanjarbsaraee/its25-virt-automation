@@ -5,8 +5,12 @@ terraform {
   # The team shares one state across machines that way.
   cloud {
     organization = "its25-virt-automation"
+
+    # "tags" matches all workspaces with this tag. The CLI prompts
+    # for a workspace on init. "name" would lock to one workspace
+    # and block per-developer dev workspaces, so tags.
     workspaces {
-      name = "its25-virt-automation"
+      tags = ["its25"]
     }
   }
 
