@@ -31,3 +31,11 @@ packages:
   - ansible
   - git
   - python3-pip
+
+# "runcmd" runs shell commands after package install. We clone
+# the repo here so the playbook lives on disk before the operator
+# logs in. The "chown" hands ownership to admin, since runcmd
+# runs as root by default.
+runcmd:
+  - sudo -u admin git clone https://github.com/sanjarbsaraee/its25-virt-automation.git /home/admin/its25-virt-automation
+  - sudo -u admin ansible-galaxy collection install -r /home/admin/its25-virt-automation/ansible/collections/requirements.yml

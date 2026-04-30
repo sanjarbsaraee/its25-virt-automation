@@ -1,0 +1,11 @@
+# Galaxy collections for the ITS25 capstone. cloud-init runs
+# "ansible-galaxy collection install -r requirements.yml" at first
+# boot. Iter 2-5 fills this list as new tools come online.
+
+collections:
+  # Infisical-collection lets Ansible read secrets from our
+  # Infisical project. Used in iter 2+ for db passwords and API
+  # keys. Pin the version, like Terraform providers, so a new
+  # release does not break a fresh build.
+  - name: infisical.vault
+    version: "1.1.4"

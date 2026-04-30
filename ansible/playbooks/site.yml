@@ -1,59 +1,9 @@
-# Top-level playbook for the ITS25 capstone. Iter 1 runs readiness
-# checks on the control node. Iter 2+ adds plays for web and db
-# below this one.
+# Top-level playbook for the ITS25 capstone. Maps host groups
+# to roles. Tasks live inside roles, not here. Iter 2+ adds
+# more plays for web and db below.
 
 - name: Verify control-node readiness
   hosts: control_nodes
   gather_facts: true
-  tasks:
-
-    # "command" runs a raw shell command. Use it when no module fits.
-    # cloud-init blocks the play until first-boot setup finishes,
-    # so a later task never races against an unfinished system.
-    - name: Wait for cloud-init to finish
-      ansible.builtin.command: cloud-init status --wait
-      changed_when: false
-      timeout: 60
-
-    # "ping" is Ansible's connectivity check. It confirms SSH works,
-    # Python runs, and modules execute. Not an ICMP ping.
-    - name: Confirm Python and connectivity
-      ansible.builtin.ping:
-
-    # "register" stores task output in a variable. We use ansible_cli
-    # not ansible_version because ansible_version is Ansible's own
-    # built-in variable. The collision shadows our registered value.
-    - name: Capture Ansible version
-      ansible.builtin.command: ansible --version
-      changed_when: false
-      register: ansible_cli
-
-    # "| first" is a Jinja filter that returns the first element of
-    # a list. Index notation [0] can fail at parse time on some
-    # Ansible versions, so | first.
-    - name: Show Ansible version
-      ansible.builtin.debug:
-        msg: "{{ ansible_cli.stdout_lines | first }}"
-
-    - name: Capture Git version
-      ansible.builtin.command: git --version
-      changed_when: false
-      register: git_version
-
-    - name: Show Git version
-      ansible.builtin.debug:
-        msg: "{{ git_version.stdout_lines | first }}"
-
-    # ansible_facts populates from gather_facts. No command needed
-    # since the facts are already collected.
-    - name: Show disk space on root
-      ansible.builtin.debug:
-        msg: >-
-          Root has {{ ansible_facts.mounts
-            | selectattr('mount', 'eq', '/')
-            | map(attribute='size_available')
-            | first | human_readable }} free.
-
-    - name: Show identity
-      ansible.builtin.debug:
-        msg: "Running as {{ ansible_user_id }} on {{ ansible_hostname }}."
+  roles:
+    - control_node_check

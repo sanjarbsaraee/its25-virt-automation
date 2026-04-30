@@ -70,7 +70,7 @@ resource "proxmox_virtual_environment_vm" "control_node" {
   }
 
   network_device {
-    bridge = "vmbr0"
+    bridge = var.lan_bridge
 
     # "virtio" uses the paravirtualized driver shipped with
     # the Debian cloud image. "e1000" emulates a real NIC and
@@ -87,8 +87,8 @@ resource "proxmox_virtual_environment_vm" "control_node" {
       ipv4 {
         # Last octet is ip_base + 10. Main .10, Sanjar .110,
         # Jim .210.
-        address = "192.168.50.${local.env.ip_base + 10}/24"
-        gateway = "192.168.50.1"
+        address = "${var.lan_subnet}.${local.env.ip_base + 10}/24"
+        gateway = var.lan_gateway
       }
     }
 
@@ -135,15 +135,15 @@ resource "proxmox_virtual_environment_vm" "web_01" {
   }
 
   network_device {
-    bridge = "vmbr0"
+    bridge = var.lan_bridge
     model  = "virtio"
   }
 
   initialization {
     ip_config {
       ipv4 {
-        address = "192.168.50.${local.env.ip_base + 20}/24"
-        gateway = "192.168.50.1"
+        address = "${var.lan_subnet}.${local.env.ip_base + 20}/24"
+        gateway = var.lan_gateway
       }
     }
 
@@ -198,15 +198,15 @@ resource "proxmox_virtual_environment_vm" "db_01" {
   }
 
   network_device {
-    bridge = "vmbr0"
+    bridge = var.lan_bridge
     model  = "virtio"
   }
 
   initialization {
     ip_config {
       ipv4 {
-        address = "192.168.50.${local.env.ip_base + 30}/24"
-        gateway = "192.168.50.1"
+        address = "${var.lan_subnet}.${local.env.ip_base + 30}/24"
+        gateway = var.lan_gateway
       }
     }
 
