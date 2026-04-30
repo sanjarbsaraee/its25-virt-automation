@@ -26,8 +26,8 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
     # "templatefile" reads the YAML and substitutes ${ }
     # markers. Both public keys land in the snippet.
     data = templatefile("${path.module}/ansible-bootstrap.yaml", {
-      sanjar_key = file("${path.module}/.ssh/sanjar_vm_key.pub"),
-      jim_key    = file("${path.module}/.ssh/jim_vm_key.pub"),
+      sanjar_key = data.infisical_secrets.proxmox.secrets["SANJAR_VM_PUBLIC_KEY"].value,
+      jim_key    = data.infisical_secrets.proxmox.secrets["JIM_VM_PUBLIC_KEY"].value,
     })
     file_name = "ansible-bootstrap.yaml"
   }

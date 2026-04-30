@@ -15,29 +15,33 @@
 - name: Confirm Python and connectivity
   ansible.builtin.ping:
 
-# "register" stores task output in a variable. We use ansible_cli
-# not ansible_version because ansible_version is Ansible's own
-# built-in variable. The collision shadows our registered value.
+    # "register" stores task output in a variable. We use ansible_cli
+    # not ansible_version because ansible_version is Ansible's own
+    # built-in variable. The collision shadows our registered value.
 - name: Capture Ansible version
   ansible.builtin.command: ansible --version
   changed_when: false
+  check_mode: false
   register: ansible_cli
 
-# "| first" is a Jinja filter that returns the first element of
-# a list. Index notation [0] can fail at parse time on some
-# Ansible versions, so | first.
+# Use default in case the command still returns empty output
 - name: Show Ansible version
   ansible.builtin.debug:
-    msg: "{{ ansible_cli.stdout_lines | first }}"
+    msg: "{{ ansible_cli.stdout_lines[0] | default('Unknown') if
+      ansible_cli.stdout_lines is defined and ansible_cli.stdout_lines else
+      'Unknown' }}"
 
 - name: Capture Git version
   ansible.builtin.command: git --version
   changed_when: false
+  check_mode: false
   register: git_version
 
 - name: Show Git version
   ansible.builtin.debug:
-    msg: "{{ git_version.stdout_lines | first }}"
+    msg: "{{ git_version.stdout_lines[0] | default('Unknown') if
+      git_version.stdout_lines is defined and git_version.stdout_lines else
+      'Unknown' }}"
 
 # ansible_facts populates from gather_facts in the play. No
 # command needed since the facts are already collected.

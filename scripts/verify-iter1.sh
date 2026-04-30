@@ -9,8 +9,7 @@
 
 set -u
 
-CONTROL_IP="${1:?Usage: $0 <control-node-ip> [ssh-key-path]}"
-SSH_KEY="${2:-$HOME/.ssh/sanjar_vm_key}"
+CONTROL_IP="${1:?Usage: $0 <control-node-ip>}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -28,7 +27,7 @@ check() {
   local expected=$3
 
   local result
-  result=$(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+  result=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
     "admin@$CONTROL_IP" "$command" 2>/dev/null)
 
   if echo "$result" | grep -q "$expected"; then

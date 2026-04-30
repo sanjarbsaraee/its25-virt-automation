@@ -88,6 +88,12 @@ Thumbs.db
 # we do not want public.
 project-knowledge-base.md
 
+# Ignore all markdown files in the root directory (walkthroughs, notes, etc)
+/*.md
+
+# But make sure we still track the main README!
+!/README.md
+
 # ---------------------------------------------------------------------------
 # Legacy virtualization
 # ---------------------------------------------------------------------------
