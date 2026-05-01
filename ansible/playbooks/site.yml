@@ -1,7 +1,7 @@
-# Top-level playbook for the ITS25 capstone. Maps host groups
-# to roles. Tasks live inside roles, not here. Iter 2+ adds
-# more plays for web and db below.
+# Maps host groups to roles. Each play targets one group.
 
+# gather_facts collects OS, mounts and hostname before
+# tasks run. The role uses it for disk and identity checks.
 - name: Verify control-node readiness
   hosts: control_nodes
   gather_facts: true

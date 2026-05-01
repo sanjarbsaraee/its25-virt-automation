@@ -1,22 +1,20 @@
-# Configures Terraform itself, not the infrastructure it manages.
+# Configures Terraform itself, not the infrastructure.
 
 terraform {
-  # "cloud" stores state in HCP Terraform instead of a local file.
-  # The team shares one state across machines that way.
+  # Stores state in HCP so the team shares one source of
+  # truth across machines.
   cloud {
     organization = "its25-virt-automation"
 
-    # "tags" matches all workspaces with this tag. The CLI prompts
-    # for a workspace on init. "name" would lock to one workspace
-    # and block per-developer dev workspaces, so tags.
+    # "tags" matches workspaces tagged "its25". "name" would
+    # lock to one workspace, blocking dev workspaces.
     workspaces {
       tags = ["its25"]
     }
   }
 
-  # Pinning bpg/proxmox to an exact version protects against
-  # breaking changes between 0.x minor releases. Infisical uses
-  # "~> 0.16" to allow patch updates.
+  # Proxmox pinned exact, 0.x minor releases break things.
+  # Infisical uses "~>" to allow patch updates.
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"

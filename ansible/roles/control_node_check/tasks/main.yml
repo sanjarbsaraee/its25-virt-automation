@@ -1,36 +1,35 @@
-# Tasks that verify the control-node is ready to run Ansible playbooks
-# against managed nodes. Runs on the control-node only. Iter 2+
-# extends this with checks for new tools as they get added.
+# Verifies the control-node has Ansible, Git and Python ready
+# before iter 2+ uses it to push tasks to other VMs.
 
-# "command" runs a raw shell command. Use it when no module fits.
-# cloud-init blocks the play until first-boot setup finishes,
-# so a later task never races against an unfinished system.
+# cloud-init finishes first-boot setup. Waiting prevents later
+# tasks from racing against an unfinished install.
 - name: Wait for cloud-init to finish
   ansible.builtin.command: cloud-init status --wait
-  changed_when: false
+  changed_when: false  # This command only reads, never modifies.
   timeout: 60
 
-# "ping" is Ansible's connectivity check. It confirms SSH works,
-# Python runs, and modules execute. Not an ICMP ping.
+# Not an ICMP ping. Confirms SSH, Python and Ansible modules
+# all work together.
 - name: Confirm Python and connectivity
   ansible.builtin.ping:
 
-    # "register" stores task output in a variable. We use ansible_cli
-    # not ansible_version because ansible_version is Ansible's own
-    # built-in variable. The collision shadows our registered value.
+# "register" saves output for later tasks. Name avoids
+# shadowing the built-in "ansible_version" fact.
 - name: Capture Ansible version
   ansible.builtin.command: ansible --version
   changed_when: false
   check_mode: false
   register: ansible_cli
 
-# Use default in case the command still returns empty output
+# stdout_lines splits output line by line. Defaults guard
+# against empty output.
 - name: Show Ansible version
   ansible.builtin.debug:
     msg: "{{ ansible_cli.stdout_lines[0] | default('Unknown') if
       ansible_cli.stdout_lines is defined and ansible_cli.stdout_lines else
       'Unknown' }}"
 
+# Same pattern, no new concepts.
 - name: Capture Git version
   ansible.builtin.command: git --version
   changed_when: false
@@ -43,8 +42,8 @@
       git_version.stdout_lines is defined and git_version.stdout_lines else
       'Unknown' }}"
 
-# ansible_facts populates from gather_facts in the play. No
-# command needed since the facts are already collected.
+# Filters ansible_facts (from gather_facts) for the root
+# mount, picks free space, converts to readable form.
 - name: Show disk space on root
   ansible.builtin.debug:
     msg: >-
@@ -53,6 +52,7 @@
         | map(attribute='size_available')
         | first | human_readable }} free.
 
+# Both facts come from gather_facts at play start.
 - name: Show identity
   ansible.builtin.debug:
     msg: "Running as {{ ansible_user_id }} on {{ ansible_hostname }}."

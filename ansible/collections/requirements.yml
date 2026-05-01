@@ -1,11 +1,12 @@
-# Galaxy collections for the ITS25 capstone. cloud-init runs
-# "ansible-galaxy collection install -r requirements.yml" at first
-# boot. Iter 2-5 fills this list as new tools come online.
+# Third-party Ansible packages installed by cloud-init at
+# first boot. Pinned so a new release cannot break a build.
 
 collections:
-  # Infisical-collection lets Ansible read secrets from our
-  # Infisical project. Used in iter 2+ for db passwords and API
-  # keys. Pin the version, like Terraform providers, so a new
-  # release does not break a fresh build.
+  # Looks up secrets from Infisical when the playbook runs,
+  # keeps credentials out of playbooks.
   - name: infisical.vault
     version: "1.1.4"
+
+  # Manages databases, users, access rules and privileges on PostgreSQL.
+  - name: community.postgresql
+    version: "4.2.0"

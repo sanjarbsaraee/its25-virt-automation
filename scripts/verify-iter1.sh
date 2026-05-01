@@ -1,11 +1,10 @@
 #!/bin/bash
-# verify-iter1.sh — End-to-end verification for iteration 1.
-# Runs from a laptop with SSH access to the control-node. Confirms
-# cloud-init delivered packages, the repo is cloned, Galaxy
-# collections are installed, and the playbook runs idempotently.
+# End-to-end check that iter 1 is functional. SSHs into the
+# control-node and runs 11 checks: packages, repo, Galaxy
+# collections, playbook idempotency.
 #
-# Usage: ./scripts/verify-iter1.sh <control-node-ip> [ssh-key-path]
-# Example: ./scripts/verify-iter1.sh 192.168.50.110 ~/.ssh/sanjar_vm_key
+# Usage:   ./scripts/verify-iter1.sh <control-node-ip>
+# Example: ./scripts/verify-iter1.sh 192.168.50.110
 
 set -u
 
@@ -18,9 +17,8 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-# "check" runs a remote command and compares output against an
-# expected substring. Prints PASS/FAIL with description, increments
-# counters. Mirrors Almir's verify-XX.sh pattern from the course.
+# Runs a command on the control-node over SSH, checks if
+# the output contains the expected substring.
 check() {
   local description=$1
   local command=$2
