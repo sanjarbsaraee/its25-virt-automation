@@ -16,11 +16,10 @@ locals {
   # host. Stored in Infisical so it never lands on disk locally.
   terraform_bot_private_key = data.infisical_secrets.proxmox.secrets["TERRAFORM_BOT_PRIVATE_KEY"].value
 
-  # Public keys for human SSH into the VMs. Reading from disk
-  # keeps the source of truth in .ssh/ rather than HCL.
-  # "trimspace" drops the trailing newline editors append.
+  # Public keys for human SSH into the VMs. Reading from Infisical
+  # keeps the source of truth centralized and the repository clean.
   vm_admin_public_keys = [
-    trimspace(file("${path.module}/.ssh/sanjar_vm_key.pub")),
-    trimspace(file("${path.module}/.ssh/jim_vm_key.pub")),
+    data.infisical_secrets.proxmox.secrets["SANJAR_VM_PUBLIC_KEY"].value,
+    data.infisical_secrets.proxmox.secrets["JIM_VM_PUBLIC_KEY"].value,
   ]
 }

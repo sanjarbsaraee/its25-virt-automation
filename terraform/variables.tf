@@ -38,7 +38,6 @@ variable "infisical_environment" {
   default     = "dev"
 }
 
-
 # ---------------------------------------------------------------------------
 # Proxmox template
 # ---------------------------------------------------------------------------
@@ -47,4 +46,26 @@ variable "template_vm_id" {
   description = "VM ID of the Debian 12 cloud-init template to clone."
   type        = number
   default     = 9000
+}
+
+# ---------------------------------------------------------------------------
+# LAN topology
+# ---------------------------------------------------------------------------
+
+variable "lan_subnet" {
+  description = "First three octets of the LAN subnet, no trailing dot."
+  type        = string
+  default     = "192.168.50"
+}
+
+variable "lan_gateway" {
+  description = "Gateway IP for VMs on the LAN."
+  type        = string
+  default     = "192.168.50.1"
+}
+
+variable "lan_bridge" {
+  description = "Proxmox bridge interface name VMs attach to."
+  type        = string
+  default     = "vmbr0"
 }

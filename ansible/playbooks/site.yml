@@ -1,0 +1,9 @@
+# Top-level playbook for the ITS25 capstone. Maps host groups
+# to roles. Tasks live inside roles, not here. Iter 2+ adds
+# more plays for web and db below.
+
+- name: Verify control-node readiness
+  hosts: control_nodes
+  gather_facts: true
+  roles:
+    - control_node_check
