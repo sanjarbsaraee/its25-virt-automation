@@ -18,6 +18,7 @@
 - name: Capture Ansible version
   ansible.builtin.command: ansible --version
   changed_when: false
+  check_mode: false
   register: ansible_cli
 
 # stdout_lines splits output line by line. Defaults guard
@@ -32,6 +33,7 @@
 - name: Capture Git version
   ansible.builtin.command: git --version
   changed_when: false
+  check_mode: false
   register: git_version
 
 - name: Show Git version
