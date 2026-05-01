@@ -3,26 +3,16 @@
 
 users:
   - name: admin
-
-    # Sudo group gives admin privileged commands, needed for
-    # Ansible's "become: true".
-    groups: sudo
-
+    groups: sudo  # Required for Ansible's "become: true".
     shell: /bin/bash
-
-    # Skips the sudo password prompt. Alternative is a vault-
-    # stored password — extra moving part. SSH keys already gate the account.
+    # No sudo password prompt. SSH keys already gate access.
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
-
     ssh_authorized_keys:
       - ${sanjar_key}
       - ${jim_key}
 
-# Updates the apt cache before any install runs.
+# Picks up fixes released since the template was built.
 package_update: true
-
-# Upgrades every installed package. Picks up fixes published
-# since the template image was built.
 package_upgrade: true
 
 packages:
@@ -31,7 +21,7 @@ packages:
   - python3-pip
 
 # Clones the repo so the playbook is on disk before login.
-# "sudo -u admin" makes admin own the cloned files. Default in runcmd is root.
+# "sudo -u admin" because runcmd defaults to root.
 runcmd:
   - sudo -u admin git clone https://github.com/sanjarbsaraee/its25-virt-automation.git /home/admin/its25-virt-automation
   - sudo -u admin ansible-galaxy collection install -r /home/admin/its25-virt-automation/ansible/collections/requirements.yml

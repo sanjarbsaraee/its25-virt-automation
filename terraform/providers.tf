@@ -1,10 +1,9 @@
-# Provider runtime configuration for Infisical and Proxmox.
+# Connects Terraform to Infisical (secrets) and Proxmox (VMs).
 
 provider "infisical" {
   host = "https://app.infisical.com"
 
-  # An empty universal block reads three INFISICAL_* env vars
-  # automatically.
+  # Empty block picks up INFISICAL_* environment variables.
   auth = {
     universal = {}
   }
@@ -14,18 +13,17 @@ provider "proxmox" {
   endpoint  = var.proxmox_endpoint
   api_token = local.proxmox_api_token
 
-  # "insecure" controls TLS cert verification of the Proxmox API.
-  # True skips it, false (default) requires a valid cert. Proxmox
-  # uses self-signed, so true.
+  # "insecure" controls TLS cert verification. True skips
+  # it. Proxmox uses a self-signed cert, so true.
   insecure = true
 
-  # SSH uploads cloud-init snippets to /var/lib/vz/snippets, which
-  # the Proxmox API cannot do directly.
+  # The API cannot upload cloud-init snippets, so Terraform
+  # SSHs into the host to write them directly.
   ssh {
-    # "agent" picks the SSH key source. True uses the local agent,
-    # false reads private_key directly. HCP has no agent, so false.
+    # "agent" true uses the local SSH agent, false reads
+    # private_key. HCP has no agent, so false.
     agent       = false
-    username    = "terraform-bot"
+    username    = "terraform-bot"  # Not a human login.
     private_key = local.terraform_bot_private_key
 
     node {

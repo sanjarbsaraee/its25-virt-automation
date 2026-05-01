@@ -1,9 +1,12 @@
-# Galaxy collections. Cloud-init installs them at first boot.
-# Versions pinned so a new release does not break a fresh build.
+# Third-party Ansible packages installed by cloud-init at
+# first boot. Pinned so a new release cannot break a build.
 
 collections:
-
-  # Lets Ansible fetch db passwords and API keys from Infisical
-  # at runtime instead of hardcoding them in playbooks.
+  # Looks up secrets from Infisical when the playbook runs,
+  # keeps credentials out of playbooks.
   - name: infisical.vault
     version: "1.1.4"
+
+  # Manages databases, users, access rules and privileges on PostgreSQL.
+  - name: community.postgresql
+    version: "4.2.0"

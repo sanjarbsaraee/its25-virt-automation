@@ -1,29 +1,34 @@
 # Verifies the control-node has Ansible, Git and Python ready
 # before iter 2+ uses it to push tasks to other VMs.
 
-# cloud-init runs first-boot setup. We wait so later tasks
-# never race against an unfinished system.
+# cloud-init finishes first-boot setup. Waiting prevents later
+# tasks from racing against an unfinished install.
 - name: Wait for cloud-init to finish
   ansible.builtin.command: cloud-init status --wait
-  changed_when: false
+  changed_when: false  # This command only reads, never modifies.
   timeout: 60
 
-# Ansible's ping confirms SSH, Python, and modules work.
-# Not an ICMP ping.
+# Not an ICMP ping. Confirms SSH, Python and Ansible modules
+# all work together.
 - name: Confirm Python and connectivity
   ansible.builtin.ping:
 
-# ansible_version is a built-in. We register as ansible_cli
-# to avoid shadowing it.
+# "register" saves output for later tasks. Name avoids
+# shadowing the built-in "ansible_version" fact.
 - name: Capture Ansible version
   ansible.builtin.command: ansible --version
   changed_when: false
   register: ansible_cli
 
+# stdout_lines splits output line by line. Defaults guard
+# against empty output.
 - name: Show Ansible version
   ansible.builtin.debug:
-    msg: "{{ ansible_cli.stdout_lines | first }}"
+    msg: "{{ ansible_cli.stdout_lines[0] | default('Unknown') if
+      ansible_cli.stdout_lines is defined and ansible_cli.stdout_lines else
+      'Unknown' }}"
 
+# Same pattern, no new concepts.
 - name: Capture Git version
   ansible.builtin.command: git --version
   changed_when: false
@@ -31,10 +36,12 @@
 
 - name: Show Git version
   ansible.builtin.debug:
-    msg: "{{ git_version.stdout_lines | first }}"
+    msg: "{{ git_version.stdout_lines[0] | default('Unknown') if
+      git_version.stdout_lines is defined and git_version.stdout_lines else
+      'Unknown' }}"
 
-# Filters mounts for "/" and reads its free space.
-# ansible_facts comes from gather_facts in site.yml.
+# Filters ansible_facts (from gather_facts) for the root
+# mount, picks free space, converts to readable form.
 - name: Show disk space on root
   ansible.builtin.debug:
     msg: >-
@@ -43,6 +50,7 @@
         | map(attribute='size_available')
         | first | human_readable }} free.
 
+# Both facts come from gather_facts at play start.
 - name: Show identity
   ansible.builtin.debug:
     msg: "Running as {{ ansible_user_id }} on {{ ansible_hostname }}."

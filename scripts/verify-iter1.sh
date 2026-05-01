@@ -1,15 +1,14 @@
 #!/bin/bash
-# verify-iter1.sh — End-to-end check that iter 1 is functional.
-# SSHs into the control-node and runs 11 checks: packages installed,
-# repo cloned, Galaxy collections present, playbook idempotent.
+# End-to-end check that iter 1 is functional. SSHs into the
+# control-node and runs 11 checks: packages, repo, Galaxy
+# collections, playbook idempotency.
 #
-# Usage: ./scripts/verify-iter1.sh <control-node-ip> [ssh-key-path]
-# Example: ./scripts/verify-iter1.sh 192.168.50.110 ~/.ssh/sanjar_vm_key
+# Usage:   ./scripts/verify-iter1.sh <control-node-ip>
+# Example: ./scripts/verify-iter1.sh 192.168.50.110
 
 set -u
 
-CONTROL_IP="${1:?Usage: $0 <control-node-ip> [ssh-key-path]}"
-SSH_KEY="${2:-$HOME/.ssh/sanjar_vm_key}"
+CONTROL_IP="${1:?Usage: $0 <control-node-ip>}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -18,15 +17,15 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-# Runs a remote command, greps for an expected substring, prints
-# PASS or FAIL. Pattern from Almir's verify-XX.sh in the course.
+# Runs a command on the control-node over SSH, checks if
+# the output contains the expected substring.
 check() {
   local description=$1
   local command=$2
   local expected=$3
 
   local result
-  result=$(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+  result=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
     "admin@$CONTROL_IP" "$command" 2>/dev/null)
 
   if echo "$result" | grep -q "$expected"; then
