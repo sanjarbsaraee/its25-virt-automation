@@ -3,6 +3,11 @@
 # "env_config" maps each workspace to a base for VM IDs and IPs.
 # Main owns 510-series. Dev workspaces shift both ranges so
 # parallel VMs do not collide on the host or LAN.
+#
+# How it works:
+# - name_suffix: Appended to VM names to identify the owner (e.g., web-01-jim).
+# - vm_base: The starting Proxmox ID for this environment. A VM's final ID is vm_base + offset.
+# - ip_base: The offset added to the last octet of the IP. (e.g., 192.168.50.<ip_base + offset>).
 locals {
   env_config = {
     "its25-virt-automation" = { name_suffix = "",        vm_base = 500, ip_base = 0 }

@@ -84,11 +84,7 @@ Thumbs.db
 # Internal documentation
 # ---------------------------------------------------------------------------
 
-# Lives outside git on purpose — contains exposed credentials and notes
-# we do not want public.
-project-knowledge-base.md
-
-# Ignore all markdown files in the root directory (walkthroughs, notes, etc)
+# Ignore all markdown files in the root directory
 /*.md
 
 # But make sure we still track the main README!
