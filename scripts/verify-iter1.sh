@@ -26,7 +26,7 @@ check() {
 
   local result
   result=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-    "admin@$CONTROL_IP" "$command" 2>/dev/null)
+    "automation@$CONTROL_IP" "$command" 2>/dev/null)
 
   if echo "$result" | grep -q "$expected"; then
     echo -e "${GREEN}✓${NC} $description"

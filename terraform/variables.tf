@@ -45,7 +45,7 @@ variable "infisical_environment" {
 variable "template_vm_id" {
   description = "VM ID of the Debian 12 cloud-init template to clone."
   type        = number
-  default     = 9000
+  default     = 9001
 }
 
 # ---------------------------------------------------------------------------

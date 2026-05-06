@@ -1,12 +1,13 @@
 #cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}.local
 # Cloud-init config. Proxmox passes this to the VM at first boot.
 
 users:
-  - name: admin
-    groups: sudo  # Required for Ansible's "become: true".
+  - name: automation
+    groups: sudo
     shell: /bin/bash
-    # No sudo password prompt. SSH keys already gate access.
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - ${sanjar_key}
       - ${jim_key}
@@ -20,8 +21,23 @@ packages:
   - git
   - python3-pip
 
-# Clones the repo so the playbook is on disk before login.
-# "sudo -u admin" because runcmd defaults to root.
+# Write the inventory file to a temporary location first.
+write_files:
+  - path: /tmp/hosts.yml
+    owner: automation:automation
+    permissions: "0644"
+    content: |
+      ${indent(6, inventory_content)}
+
+# Clones the repo and moves the inventory into place.
 runcmd:
-  - sudo -u admin git clone https://github.com/sanjarbsaraee/its25-virt-automation.git /home/admin/its25-virt-automation
-  - sudo -u admin ansible-galaxy collection install -r /home/admin/its25-virt-automation/ansible/collections/requirements.yml
+  - sudo -u automation git clone
+    https://github.com/sanjarbsaraee/its25-virt-automation.git
+    /home/automation/its25-virt-automation
+  # Move the pre-written inventory into the cloned repo
+  - mv /tmp/hosts.yml
+    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+  - chown automation:automation
+    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+  - sudo -u automation ansible-galaxy collection install -r
+    /home/automation/its25-virt-automation/ansible/collections/requirements.yml
