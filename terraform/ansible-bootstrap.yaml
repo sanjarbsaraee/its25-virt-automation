@@ -1,8 +1,13 @@
 #cloud-config
+# Sets up the control-node at first boot. Installs Ansible,
+# clones the repo, writes a list of VM addresses. Without
+# this, every rebuild needs manual setup.
+
 hostname: ${hostname}
 fqdn: ${hostname}.local
-# Cloud-init config. Proxmox passes this to the VM at first boot.
 
+# Shared service account across all VMs. Passwordless sudo
+# lets Ansible run commands as root without prompts.
 users:
   - name: automation
     groups: sudo
@@ -12,7 +17,6 @@ users:
       - ${sanjar_key}
       - ${jim_key}
 
-# Picks up fixes released since the template was built.
 package_update: true
 package_upgrade: true
 
@@ -21,7 +25,8 @@ packages:
   - git
   - python3-pip
 
-# Write the inventory file to a temporary location first.
+# Ansible needs VM names and IPs to know which machines
+# to configure. This block writes that list at first boot.
 write_files:
   - path: /tmp/hosts.yml
     owner: automation:automation
@@ -29,15 +34,20 @@ write_files:
     content: |
       ${indent(6, inventory_content)}
 
-# Clones the repo and moves the inventory into place.
+# Cloud-init runs commands as root. "sudo -u automation"
+# makes automation own the files, not root.
 runcmd:
   - sudo -u automation git clone
     https://github.com/sanjarbsaraee/its25-virt-automation.git
     /home/automation/its25-virt-automation
-  # Move the pre-written inventory into the cloned repo
+  # Replaces the default address list in the repo with
+  # actual VM IPs from Terraform.
   - mv /tmp/hosts.yml
     /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
   - chown automation:automation
     /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
-  - sudo -u automation ansible-galaxy collection install -r
-    /home/automation/its25-virt-automation/ansible/collections/requirements.yml
+  # -p puts packages in ./collections, where Ansible
+  # looks. Without it, packages land in ~/.ansible/.
+  - sudo -u automation ansible-galaxy collection install
+    -p /home/automation/its25-virt-automation/ansible/collections
+    -r /home/automation/its25-virt-automation/ansible/collections/requirements.yml

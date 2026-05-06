@@ -9,16 +9,15 @@ locals {
 
   env = lookup(local.env_config, terraform.workspace, local.env_config["its25-virt-automation"])
 
-  # ---------------------------------------------------------------------------
-  # VM Fleet Configuration (THE Control Panel)
-  # ---------------------------------------------------------------------------
+  # One entry per VM. Adding a new machine means one line here.
   vm_fleet = {
     "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 2048, disk_size = 20, desc = "Ansible Control Node" }
     "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Web Server" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
   }
 
-  # Dynamic Inventory built directly from the fleet map to avoid circular dependencies.
+  # Ansible needs VM names and IPs. This builds that list
+  # from vm_fleet so bootstrap can write it at first boot.
   inventory = {
     all = {
       children = {
@@ -35,7 +34,7 @@ locals {
   }
 }
 
-# 1. Snippets (Bootstrap & Metadata)
+# Cloud-init files uploaded to Proxmox via SSH.
 resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   content_type = "snippets"
   datastore_id = "local"
@@ -65,7 +64,7 @@ resource "proxmox_virtual_environment_file" "vm_metadata" {
   }
 }
 
-# 2. The Unified Fleet
+# Creates all VMs from the vm_fleet map above.
 resource "proxmox_virtual_environment_vm" "nodes" {
   for_each    = local.vm_fleet
   name        = "${each.key}${local.env.name_suffix}"
@@ -96,7 +95,8 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   initialization {
     datastore_id = "local-lvm"
 
-    # Smart Switch: Control node gets the full bootstrap, others get metadata hostnames.
+    # Control-node gets Ansible bootstrap, other VMs get
+    # only a hostname via metadata.
     user_data_file_id = each.value.role == "control" ? proxmox_virtual_environment_file.ansible_bootstrap.id : null
     meta_data_file_id = each.value.role != "control" ? proxmox_virtual_environment_file.vm_metadata[each.key].id : null
 
@@ -107,7 +107,8 @@ resource "proxmox_virtual_environment_vm" "nodes" {
       }
     }
 
-    # Custom DNS servers (required for Control Node to bypass host resolver)
+    # Tailscale on the host hijacks DNS with 100.100.100.100.
+    # Public servers bypass that so cloud-init can reach the internet.
     dns {
       servers = ["1.1.1.1", "8.8.8.8"]
     }
