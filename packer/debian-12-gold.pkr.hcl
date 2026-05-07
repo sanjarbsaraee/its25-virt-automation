@@ -34,6 +34,12 @@ source "proxmox-iso" "debian-12-gold" {
   # Guest agent lets Proxmox read VM IP and state.
   qemu_agent               = true
 
+  # Packer starts a temporary web server on port 8000 to
+  # serve preseed.cfg to the VM during installation.
+  http_directory            = "http"
+  http_port_min             = 8000
+  http_port_max             = 8000
+
   vm_id                = 9001
   vm_name              = "debian-12-gold"
   template_description = "Debian 12 Gold Template (Swedish Locale)"
@@ -58,8 +64,11 @@ source "proxmox-iso" "debian-12-gold" {
     unmount  = true
   }
 
-  # Simulates keystrokes in the VM console to start install.
-  # preseed.cfg serves via host bridge IP, answers all prompts.
+  # Static IP in boot_command works around a Packer plugin
+  # bug where guest agent IP discovery hangs indefinitely.
+  # .250 is outside the VM offset range (10-230).
+  # Network is set here, not in preseed, because the VM
+  # needs an IP before it can download preseed.cfg.
   boot_command = [
     "<esc><wait>",
     "install <wait>",
@@ -67,6 +76,12 @@ source "proxmox-iso" "debian-12-gold" {
     " debian-installer/locale=en_US.UTF-8 <wait>",
     " console-setup/ask_detect=false <wait>",
     " keyboard-configuration/xkb-keymap=se <wait>",
+    " netcfg/disable_autoconfig=true <wait>",
+    " netcfg/get_ipaddress=192.168.50.250 <wait>",
+    " netcfg/get_netmask=255.255.255.0 <wait>",
+    " netcfg/get_gateway=192.168.50.1 <wait>",
+    " netcfg/get_nameservers=1.1.1.1 <wait>",
+    " netcfg/confirm_static=true <wait>",
     " auto=true <wait>",
     " priority=critical <wait>",
     " preseed/url=http://192.168.50.197:8000/preseed.cfg <wait>",
@@ -76,6 +91,7 @@ source "proxmox-iso" "debian-12-gold" {
 
   # Packer SSHs in to confirm install finished.
   # Password from Infisical via PKR_VAR_ssh_password.
+  ssh_host     = "192.168.50.250"
   ssh_username = "automation"
   ssh_password = var.ssh_password
   ssh_timeout  = "30m"
