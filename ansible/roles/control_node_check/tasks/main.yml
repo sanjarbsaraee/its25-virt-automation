@@ -56,3 +56,17 @@
 - name: Show identity
   ansible.builtin.debug:
     msg: "Running as {{ ansible_user_id }} on {{ ansible_hostname }}."
+
+# --- Fleet Connectivity ---
+# Before Iteration 2 starts installing software, we verify the
+# control-node can reach every other node in the fleet via SSH.
+- name: Fleet Connectivity Baseline
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[item].ansible_host }}"
+    port: 22
+    state: started
+    timeout: 10
+  loop: "{{ groups['all'] | reject('equalto', 'control-node') | list }}"
+  when: groups['all'] | length > 1
+
+

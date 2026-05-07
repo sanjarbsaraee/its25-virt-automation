@@ -16,6 +16,7 @@ users:
     ssh_authorized_keys:
       - ${sanjar_key}
       - ${jim_key}
+      - ${automation_key}
 
 package_update: true
 package_upgrade: true
@@ -33,6 +34,11 @@ write_files:
     permissions: "0644"
     content: |
       ${indent(6, inventory_content)}
+  - path: /home/automation/.ssh/id_ed25519
+    owner: automation:automation
+    permissions: "0600"
+    content: |
+      ${indent(6, automation_private_key)}
 
 # Cloud-init runs commands as root. "sudo -u automation"
 # makes automation own the files, not root.

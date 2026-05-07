@@ -49,6 +49,9 @@ check() {
     fi
 }
 
+# --- System Specs ---
+# Extracts basic hardware and OS information to confirm the VM matches 
+# the flavor/spec defined in Terraform.
 echo -e "\n${CYAN}--- System Specs ---${NC}"
 OS=$(run_ssh "cat /etc/os-release | grep PRETTY_NAME | cut -d'\"' -f2")
 CORES=$(run_ssh "nproc")
@@ -60,6 +63,11 @@ echo -e " CPU:     ${YELLOW}$CORES Cores${NC}"
 echo -e " RAM:     ${YELLOW}$RAM Total${NC}"
 echo -e " DISK:    ${YELLOW}$DISK Root Partition${NC}"
 
+# --- Core Connectivity ---
+# Baseline requirements for any node in the fleet.
+# - SSH: Ensures the automation user can log in.
+# - Sudo: Ensures Ansible can escalate to root without a password.
+# - QEMU Agent: Allows Proxmox to report IP and state to Terraform.
 echo -e "\n${CYAN}--- Core Connectivity ---${NC}"
 check "SSH Connectivity" "whoami" "$USER"
 check "Sudo Privileges (NOPASSWD)" "sudo -n whoami" "root"
@@ -69,19 +77,33 @@ check "QEMU Guest Agent Running" "systemctl is-active qemu-guest-agent" "active"
 IS_CONTROL=$(run_ssh "test -d /home/$USER/its25-virt-automation && echo YES || echo NO")
 
 if [ "$IS_CONTROL" == "YES" ]; then
+    # --- Control Node Checks ---
+    # Verified only if the project repository is found on the node.
+    # - Ansible/Git: Core tools required for configuration management.
+    # - Collections: Ensures the local project directory is correctly 
+    #   configured with required 3rd party modules (like Infisical).
     echo -e "\n${CYAN}--- Control Node Checks ---${NC}"
     check "Ansible Installed" "ansible --version" "ansible"
     check "Git Installed" "git --version" "git"
     check "Project Repo Found" "ls /home/$USER/its25-virt-automation/README.md" "README.md"
-    check "Ansible Collections" "ansible-galaxy collection list" "infisical"
+    check "Ansible Collections" "cd /home/$USER/its25-virt-automation/ansible && ansible-galaxy collection list" "infisical"
     
+    # --- Fleet Connectivity ---
+    # The "Master Switch" test. Runs from the control-node against the
+    # rest of the inventory to prove total internal reachability.
     echo -e "\n${CYAN}--- Fleet Connectivity ---${NC}"
-    # This checks if the Control Node can reach all worker nodes
-    check "Ansible Ping (All Nodes)" "cd /home/$USER/its25-virt-automation/ansible && ansible all -m ping" "SUCCESS"
+    # This checks if the Control Node can reach all worker nodes by role.
+    # Individual checks make it easier to see which tier is having connectivity issues.
+    check "Ansible Ping (Web Tier)" "cd /home/$USER/its25-virt-automation/ansible && ansible web -m ping" "SUCCESS"
+    check "Ansible Ping (DB Tier)" "cd /home/$USER/its25-virt-automation/ansible && ansible db -m ping" "SUCCESS"
 else
+    # --- Generic Node Checks ---
+    # Hardening and service health for worker nodes (Web/DB).
+    # - SSH Active: Confirms the daemon is running.
+    # - Root Login: Ensures security best practices (no root passwords).
     echo -e "\n${CYAN}--- Generic Node Checks ---${NC}"
     check "SSH Service Active" "systemctl is-active ssh" "active"
-    check "No Root Password Login" "sudo grep 'PermitRootLogin' /etc/ssh/sshd_config" "prohibit-password|no"
+    check "No Root Password Login" "sudo grep '^PermitRootLogin' /etc/ssh/sshd_config" "prohibit-password|no"
 fi
 
 echo -e "\n${CYAN}==========================================${NC}"

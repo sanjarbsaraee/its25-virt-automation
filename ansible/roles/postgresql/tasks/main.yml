@@ -1,0 +1,6 @@
+# Placeholder for PostgreSQL installation and security.
+# This role will handle DB creation, user permissions, and UFW rules in Iteration 2.
+
+- name: PostgreSQL | Ensure PostgreSQL is installed
+  ansible.builtin.debug:
+    msg: "PostgreSQL role will be implemented here."

@@ -3,7 +3,18 @@
 # gather_facts collects OS, mounts and hostname before
 # tasks run. The role uses it for disk and identity checks.
 - name: Verify control-node readiness
-  hosts: control_nodes
+  hosts: control
   gather_facts: true
   roles:
     - control_node_check
+
+- name: Configure Web Nodes
+  hosts: web
+  roles:
+    - nginx
+    - flask
+
+- name: Configure DB Nodes
+  hosts: db
+  roles:
+    - postgresql
