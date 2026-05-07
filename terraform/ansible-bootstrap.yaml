@@ -1,17 +1,22 @@
 #cloud-config
-# Cloud-init config. Proxmox passes this to the VM at first boot.
+# Sets up the control-node at first boot. Installs Ansible,
+# clones the repo, writes a list of VM addresses. Without
+# this, every rebuild needs manual setup.
 
+hostname: ${hostname}
+fqdn: ${hostname}.local
+
+# Shared service account across all VMs. Passwordless sudo
+# lets Ansible run commands as root without prompts.
 users:
-  - name: admin
-    groups: sudo  # Required for Ansible's "become: true".
+  - name: automation
+    groups: sudo
     shell: /bin/bash
-    # No sudo password prompt. SSH keys already gate access.
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - ${sanjar_key}
       - ${jim_key}
 
-# Picks up fixes released since the template was built.
 package_update: true
 package_upgrade: true
 
@@ -20,8 +25,29 @@ packages:
   - git
   - python3-pip
 
-# Clones the repo so the playbook is on disk before login.
-# "sudo -u admin" because runcmd defaults to root.
+# Ansible needs VM names and IPs to know which machines
+# to configure. This block writes that list at first boot.
+write_files:
+  - path: /tmp/hosts.yml
+    owner: automation:automation
+    permissions: "0644"
+    content: |
+      ${indent(6, inventory_content)}
+
+# Cloud-init runs commands as root. "sudo -u automation"
+# makes automation own the files, not root.
 runcmd:
-  - sudo -u admin git clone https://github.com/sanjarbsaraee/its25-virt-automation.git /home/admin/its25-virt-automation
-  - sudo -u admin ansible-galaxy collection install -r /home/admin/its25-virt-automation/ansible/collections/requirements.yml
+  - sudo -u automation git clone
+    https://github.com/sanjarbsaraee/its25-virt-automation.git
+    /home/automation/its25-virt-automation
+  # Replaces the default address list in the repo with
+  # actual VM IPs from Terraform.
+  - mv /tmp/hosts.yml
+    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+  - chown automation:automation
+    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+  # -p puts packages in ./collections, where Ansible
+  # looks. Without it, packages land in ~/.ansible/.
+  - sudo -u automation ansible-galaxy collection install
+    -p /home/automation/its25-virt-automation/ansible/collections
+    -r /home/automation/its25-virt-automation/ansible/collections/requirements.yml

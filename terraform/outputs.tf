@@ -1,33 +1,17 @@
-# Values consumed by the Ansible inventory. IPs read from
-# the resource, not hard-coded, so dev workspaces get their
-# actual addresses instead of main's.
+# Dynamic Fleet Status: Automatically includes every VM defined in the project.
+output "vm_fleet_status" {
+  description = "A dynamic summary of all deployed VMs, their roles, IPs, and Proxmox IDs."
+  value = {
+    for k, v in proxmox_virtual_environment_vm.nodes : k => {
+      name       = v.name
+      role       = local.vm_fleet[k].role
+      ip_address = split("/", v.initialization[0].ip_config[0].ipv4[0].address)[0]
+      vm_id      = v.vm_id
+    }
+  }
+}
 
+# Legacy convenience outputs (Optional, for quick CLI access)
 output "control_node_ip" {
-  description = "IP address of the control-node VM."
-  value       = proxmox_virtual_environment_vm.control_node.initialization[0].ip_config[0].ipv4[0].address
-}
-
-output "control_node_vm_id" {
-  description = "Proxmox VM ID of the control-node."
-  value       = proxmox_virtual_environment_vm.control_node.vm_id
-}
-
-output "web_01_ip" {
-  description = "IP address of the web-01 VM."
-  value       = proxmox_virtual_environment_vm.web_01.initialization[0].ip_config[0].ipv4[0].address
-}
-
-output "web_01_vm_id" {
-  description = "Proxmox VM ID of the web-01."
-  value       = proxmox_virtual_environment_vm.web_01.vm_id
-}
-
-output "db_01_ip" {
-  description = "IP address of the db-01 VM."
-  value       = proxmox_virtual_environment_vm.db_01.initialization[0].ip_config[0].ipv4[0].address
-}
-
-output "db_01_vm_id" {
-  description = "Proxmox VM ID of the db-01."
-  value       = proxmox_virtual_environment_vm.db_01.vm_id
+  value = split("/", proxmox_virtual_environment_vm.nodes["control-node"].initialization[0].ip_config[0].ipv4[0].address)[0]
 }

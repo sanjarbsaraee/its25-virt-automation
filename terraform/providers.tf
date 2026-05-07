@@ -3,7 +3,8 @@
 provider "infisical" {
   host = "https://app.infisical.com"
 
-  # Empty block picks up INFISICAL_* environment variables.
+  # "universal" is machine-to-machine auth. Empty braces read infisical
+  # Client ID and Client Secret from HCP workspace variables.
   auth = {
     universal = {}
   }

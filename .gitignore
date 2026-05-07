@@ -71,9 +71,14 @@ Thumbs.db
 # Internal documentation
 # ---------------------------------------------------------------------------
 
-# Root markdown files except README.
+# Root markdown files except README and project docs.
 /*.md
 !/README.md
+!/PROJECT_WALKTHROUGH.md
+!/GOLDEN_TEMPLATE_OVERVIEW.md
+!/PACKER_HOWTO.md
+!/NETWORK_RATIONALE.md
+!/TEMPLATE_RATIONALE.md
 
 # ---------------------------------------------------------------------------
 # Legacy virtualization
