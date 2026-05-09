@@ -1,11 +1,14 @@
 # Without a background service, the app dies on
 # reboot or crash and nobody restarts it.
 
-- name: Install Python venv package
+- name: Install Python and database client packages
   ansible.builtin.apt:
     name:
       - python3-venv
       - python3-pip
+      # psql lets us debug database connections from
+      # the web node without installing the full server.
+      - postgresql-client
     state: present
   become: true
 

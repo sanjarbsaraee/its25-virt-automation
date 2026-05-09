@@ -68,8 +68,9 @@ check "Database is reachable from Flask" \
 
 # --- Flask Process ---
 echo -e "\n${CYAN}--- Flask Process ---${NC}"
+# ps -o user= prints the full username without truncation.
 check "Gunicorn runs as $USER (not root)" \
-    "$(run_ssh $WEB_IP 'ps aux | grep gunicorn | grep -v grep | head -1')" "$USER"
+    "$(run_ssh $WEB_IP 'ps -o user= -p $(pgrep gunicorn | head -1)')" "$USER"
 check "flask_app service is active" \
     "$(run_ssh $WEB_IP 'systemctl is-active flask_app')" "active"
 
@@ -81,13 +82,14 @@ check "TLS cert exists" \
     "$(run_ssh $DB_IP 'test -f /etc/postgresql/16/main/server.crt && echo YES')" "YES"
 
 # --- TLS Enforcement ---
-# Connects from web-01 to db-01 with TLS required — should work.
-# Connects without TLS — should be rejected.
+# Reads the db password from the flask_app systemd service
+# so the script does not need credentials as input.
 echo -e "\n${CYAN}--- TLS Enforcement ---${NC}"
+PG_PWD_CMD="sudo systemctl show flask_app -p Environment | grep -o 'DB_PASSWORD=[^ ]*' | cut -d= -f2"
 check "TLS connection succeeds" \
-    "$(run_ssh $WEB_IP "psql \"host=$DB_IP user=app_rw dbname=app sslmode=require\" -c \"SELECT 1;\" 2>&1")" "1"
+    "$(run_ssh $WEB_IP "PGPASSWORD=\$($PG_PWD_CMD) psql \"host=$DB_IP user=app_rw dbname=app sslmode=require\" -c \"SELECT 1;\" 2>&1")" "1 row"
 check "Non-TLS connection rejected" \
-    "$(run_ssh $WEB_IP "psql \"host=$DB_IP user=app_rw dbname=app sslmode=disable\" -c \"SELECT 1;\" 2>&1")" "FATAL\|Connection refused\|SSL"
+    "$(run_ssh $WEB_IP "PGPASSWORD=\$($PG_PWD_CMD) psql \"host=$DB_IP user=app_rw dbname=app sslmode=disable\" -c \"SELECT 1;\" 2>&1")" "FATAL"
 
 # --- Firewall ---
 echo -e "\n${CYAN}--- Firewall ---${NC}"
