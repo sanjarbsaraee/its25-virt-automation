@@ -63,8 +63,10 @@ check "GET /health returns ok" \
     "$(curl -s http://$WEB_IP:8080/health)" "ok"
 check "GET /info returns JSON with db_reachable" \
     "$(curl -s http://$WEB_IP:8080/info)" "db_reachable"
+# Matches both "db_reachable":true and "db_reachable": true
+# since Flask may or may not add a space after the colon.
 check "Database is reachable from Flask" \
-    "$(curl -s http://$WEB_IP:8080/info)" '"db_reachable": true'
+    "$(curl -s http://$WEB_IP:8080/info)" "db_reachable.*true"
 
 # --- Flask Process ---
 echo -e "\n${CYAN}--- Flask Process ---${NC}"
