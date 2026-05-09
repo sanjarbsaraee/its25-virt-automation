@@ -1,6 +1,79 @@
-# Placeholder for PostgreSQL installation and security.
-# This role will handle DB creation, user permissions, and UFW rules in Iteration 2.
+# PostgreSQL Server Installation and Configuration
+# This role handles package installation, service management, database/user creation,
+# and network security (firewall and access controls).
 
-- name: PostgreSQL | Ensure PostgreSQL is installed
-  ansible.builtin.debug:
-    msg: "PostgreSQL role will be implemented here."
+- name: DB | Install PostgreSQL and UFW
+  ansible.builtin.apt:
+    name:
+      - postgresql
+      - python3-psycopg2  # Required for Ansible postgresql modules
+      - ufw
+    state: present
+    update_cache: yes
+  become: true
+
+- name: DB | Ensure PostgreSQL is running
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+# NOTE: The following tasks require 'become_user: postgres' because default 
+# Linux security only allows the 'postgres' system user to manage the database.
+
+- name: DB | Create application database
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+  become: true
+  become_user: postgres
+
+- name: DB | Create application user
+  community.postgresql.postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+  become: true
+  become_user: postgres
+
+# Instead of maintaining massive template files, we use lineinfile 
+# to make surgical edits to the default configuration files.
+
+- name: DB | Allow remote connections in postgresql.conf
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/15/main/postgresql.conf
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = '*'"
+  become: true
+  notify: restart postgresql
+
+# We use 'scram-sha-256' as the authentication method as it is the 
+# modern standard (superior to the older md5).
+- name: DB | Allow web tier access in pg_hba.conf
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/15/main/pg_hba.conf
+    line: "host all all {{ hostvars[groups['web'][0]]['ansible_host'] }}/32 scram-sha-256"
+  become: true
+  notify: restart postgresql
+
+# --- Firewall Security ---
+# We restrict database access to ONLY the web server IP.
+
+- name: DB | Allow Postgres from web
+  community.general.ufw:
+    rule: allow
+    port: "5432"
+    proto: tcp
+    src: "{{ hostvars[groups['web'][0]]['ansible_host'] }}"
+  become: true
+
+# IMPORTANT: Always allow SSH before enabling UFW to avoid locking yourself out!
+- name: DB | Allow SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+  become: true
+
+- name: DB | Enable UFW
+  community.general.ufw:
+    state: enabled
+  become: true
