@@ -8,13 +8,20 @@
   roles:
     - control_node_check
 
-- name: Configure Web Nodes
-  hosts: web
+- name: Common baseline on all hosts
+  hosts: all
+  become: true
   roles:
-    - nginx
-    - flask
+    - common
 
-- name: Configure DB Nodes
+- name: Configure database server
   hosts: db
+  become: true
   roles:
-    - postgresql
+    - postgres_server
+
+- name: Configure web servers
+  hosts: web
+  become: true
+  roles:
+    - flask_app

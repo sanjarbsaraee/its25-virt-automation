@@ -1,0 +1,5 @@
+# Installs baseline packages and sets timezone on every VM.
+
+- name: Common | Placeholder
+  ansible.builtin.debug:
+    msg: "Common role will be implemented here."
