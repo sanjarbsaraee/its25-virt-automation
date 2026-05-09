@@ -40,20 +40,40 @@ write_files:
     content: |
       ${indent(6, automation_private_key)}
 
+  # We write the secret to /tmp first because creating it directly in the 
+  # project folder would make 'git clone' fail (folder must be empty).
+  - path: /tmp/secrets.yml
+    owner: automation:automation
+    permissions: "0600"
+    content: |
+      db_password: "${db_password}"
+
 # Cloud-init runs commands as root. "sudo -u automation"
 # makes automation own the files, not root.
 runcmd:
   - sudo -u automation git clone
     https://github.com/sanjarbsaraee/its25-virt-automation.git
     /home/automation/its25-virt-automation
+
   # Replaces the default address list in the repo with
   # actual VM IPs from Terraform.
   - mv /tmp/hosts.yml
     /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
   - chown automation:automation
     /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+
   # -p puts packages in ./collections, where Ansible
   # looks. Without it, packages land in ~/.ansible/.
-  - sudo -u automation ansible-galaxy collection install
-    -p /home/automation/its25-virt-automation/ansible/collections
-    -r /home/automation/its25-virt-automation/ansible/collections/requirements.yml
+  - sudo -u automation ansible-galaxy collection install -p
+    /home/automation/its25-virt-automation/ansible/collections -r
+    /home/automation/its25-virt-automation/ansible/collections/requirements.yml
+
+  # Create the directory for group variables and move the secrets file there.
+  # This separates public vars from secret vars.
+  - mkdir -p
+    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all
+  - mv /tmp/secrets.yml
+    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all/secrets.yml
+
+  # Ensure the automation user owns EVERYTHING in the project folder to avoid permission errors.
+  - chown -R automation:automation /home/automation/its25-virt-automation
