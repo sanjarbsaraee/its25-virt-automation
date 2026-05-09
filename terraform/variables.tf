@@ -37,7 +37,16 @@ variable "infisical_environment" {
   type        = string
   default     = "dev"
 }
+variable "infisical_client_id" {
+  description = "Client ID for Infisical Universal Auth, passed to control-node for Ansible lookups."
+  type        = string
+}
 
+variable "infisical_client_secret" {
+  description = "Client secret for Infisical Universal Auth, passed to control-node for Ansible lookups."
+  type        = string
+  sensitive   = true
+}
 # ---------------------------------------------------------------------------
 # Proxmox template
 # ---------------------------------------------------------------------------

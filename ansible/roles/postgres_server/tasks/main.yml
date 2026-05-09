@@ -1,71 +1,120 @@
-# PostgreSQL Server Installation and Configuration
-# This role handles package installation, service management, database/user creation,
-# and network security (firewall and access controls).
+# PostgreSQL accepts connections only from web tier and
+# requires TLS. Without these restrictions, any host on
+# the network can read the database.
 
-- name: DB | Install PostgreSQL and UFW
+- name: DB | Add PGDG signing key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /etc/apt/trusted.gpg.d/pgdg.asc
+    mode: "0644"
+  become: true
+
+# PGDG is PostgreSQL's own package repo. Debian 12 ships
+# version 15 by default — PGDG gives us version 16.
+- name: DB | Add PGDG repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main"
+    filename: pgdg
+    state: present
+  become: true
+
+- name: DB | Install PostgreSQL
   ansible.builtin.apt:
     name:
-      - postgresql
-      - python3-psycopg2  # Required for Ansible postgresql modules
+      - "postgresql-{{ pg_version }}"
+      - "postgresql-contrib-{{ pg_version }}"
+      - python3-psycopg2
+      - acl
       - ufw
     state: present
-    update_cache: yes
+    update_cache: true
   become: true
 
-- name: DB | Ensure PostgreSQL is running
-  ansible.builtin.service:
-    name: postgresql
+# Self-signed cert for TLS between web and db.
+# "creates" skips this if the cert already exists.
+- name: DB | Generate self-signed TLS cert
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -new -x509 -days 365 -nodes
+      -out {{ pg_conf_dir }}/server.crt
+      -keyout {{ pg_conf_dir }}/server.key
+      -subj "/CN=db-01"
+    creates: "{{ pg_conf_dir }}/server.crt"
+  become: true
+  notify: restart postgresql
+
+- name: DB | Set cert permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: postgres
+    group: postgres
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ pg_conf_dir }}/server.crt", mode: "0644" }
+    - { path: "{{ pg_conf_dir }}/server.key", mode: "0600" }
+  become: true
+
+- name: DB | Deploy postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ pg_conf_dir }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: restart postgresql
+
+- name: DB | Deploy pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ pg_conf_dir }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: reload postgresql
+
+- name: DB | Start and enable PostgreSQL
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
     state: started
-    enabled: yes
+    enabled: true
+  become: true
 
-# NOTE: The following tasks require 'become_user: postgres' because default 
-# Linux security only allows the 'postgres' system user to manage the database.
-
+# become_user: postgres — only the postgres system user
+# can create databases and users in PostgreSQL.
 - name: DB | Create application database
   community.postgresql.postgresql_db:
-    name: "{{ db_name }}"
+    name: "{{ pg_app_db }}"
+    encoding: UTF-8
+    template: template0
   become: true
   become_user: postgres
 
-- name: DB | Create application user
+- name: DB | Create app user
   community.postgresql.postgresql_user:
-    name: "{{ db_user }}"
+    name: "{{ pg_app_user }}"
     password: "{{ db_password }}"
+    encrypted: true
+    role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB
   become: true
   become_user: postgres
+  # no_log hides the password from Ansible output.
+  no_log: true
 
-# Instead of maintaining massive template files, we use lineinfile 
-# to make surgical edits to the default configuration files.
-
-- name: DB | Allow remote connections in postgresql.conf
-  ansible.builtin.lineinfile:
-    path: /etc/postgresql/15/main/postgresql.conf
-    regexp: "^#?listen_addresses"
-    line: "listen_addresses = '*'"
-  become: true
-  notify: restart postgresql
-
-# We use 'scram-sha-256' as the authentication method as it is the 
-# modern standard (superior to the older md5).
-- name: DB | Allow web tier access in pg_hba.conf
-  ansible.builtin.lineinfile:
-    path: /etc/postgresql/15/main/pg_hba.conf
-    line: "host all all {{ hostvars[groups['web'][0]]['ansible_host'] }}/32 scram-sha-256"
-  become: true
-  notify: restart postgresql
-
-# --- Firewall Security ---
-# We restrict database access to ONLY the web server IP.
+# --- Firewall ---
+# Only web tier reaches port 5432. SSH stays open so
+# Ansible can still manage the node.
 
 - name: DB | Allow Postgres from web
   community.general.ufw:
     rule: allow
     port: "5432"
     proto: tcp
-    src: "{{ hostvars[groups['web'][0]]['ansible_host'] }}"
+    src: "{{ item }}"
+  loop: "{{ pg_allowed_clients | map('regex_replace', '/32$', '') | list }}"
   become: true
 
-# IMPORTANT: Always allow SSH before enabling UFW to avoid locking yourself out!
 - name: DB | Allow SSH
   community.general.ufw:
     rule: allow

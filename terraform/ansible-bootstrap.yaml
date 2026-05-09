@@ -40,13 +40,14 @@ write_files:
     content: |
       ${indent(6, automation_private_key)}
 
-  # We write the secret to /tmp first because creating it directly in the 
-  # project folder would make 'git clone' fail (folder must be empty).
-  - path: /tmp/secrets.yml
-    owner: automation:automation
-    permissions: "0600"
+  # Infisical credentials for Ansible lookups. Written to
+  # /etc/environment so all shells and processes can read them.
+  - path: /etc/environment
+    append: true
     content: |
-      db_password: "${db_password}"
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=${infisical_client_id}
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=${infisical_client_secret}
+      INFISICAL_PROJECT_ID=${infisical_project_id}
 
 # Cloud-init runs commands as root. "sudo -u automation"
 # makes automation own the files, not root.
@@ -68,12 +69,10 @@ runcmd:
     /home/automation/its25-virt-automation/ansible/collections -r
     /home/automation/its25-virt-automation/ansible/collections/requirements.yml
 
-  # Create the directory for group variables and move the secrets file there.
-  # This separates public vars from secret vars.
-  - mkdir -p
-    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all
-  - mv /tmp/secrets.yml
-    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all/secrets.yml
+  # The infisical.vault Ansible collection needs this
+  # Python package to talk to the Infisical API.
+  - pip install infisicalsdk --break-system-packages
 
-  # Ensure the automation user owns EVERYTHING in the project folder to avoid permission errors.
+  # Ensure the automation user owns EVERYTHING in the
+  # project folder to avoid permission errors.
   - chown -R automation:automation /home/automation/its25-virt-automation
