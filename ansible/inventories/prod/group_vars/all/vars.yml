@@ -13,10 +13,10 @@ db_user: app_rw
 infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
 
 # Fetched from Infisical at runtime. Never stored on disk.
-# The lookup returns a list of objects — first gets the
-# object, .value extracts the password string.
-db_password: "{{ (lookup('infisical.vault.read_secrets',
+# The lookup returns an object with key and value —
+# .value extracts the password string.
+db_password: "{{ lookup('infisical.vault.read_secrets',
   project_id=infisical_project_id,
   env_slug='dev',
   path='/',
-  secret_name='DB_PASSWORD') | first).value }}"
+  secret_name='DB_PASSWORD').value }}"
