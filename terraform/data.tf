@@ -20,5 +20,9 @@ locals {
   vm_admin_public_keys = [
     data.infisical_secrets.proxmox.secrets["SANJAR_VM_PUBLIC_KEY"].value,
     data.infisical_secrets.proxmox.secrets["JIM_VM_PUBLIC_KEY"].value,
+    data.infisical_secrets.proxmox.secrets["AUTOMATION_PUBLIC_KEY"].value,
   ]
+
+  # Automation key for control-node to worker-node communication.
+  automation_private_key = data.infisical_secrets.proxmox.secrets["AUTOMATION_PRIVATE_KEY"].value
 }

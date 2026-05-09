@@ -1,0 +1,6 @@
+# Placeholder for Nginx installation and configuration.
+# This role will handle the load balancer setup in Iteration 2.
+
+- name: Nginx | Ensure Nginx is installed
+  ansible.builtin.debug:
+    msg: "Nginx role will be implemented here."

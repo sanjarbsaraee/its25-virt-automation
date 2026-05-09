@@ -1,0 +1,6 @@
+# Placeholder for Flask application deployment.
+# This role will handle dependencies, app files, and systemd setup in Iteration 2.
+
+- name: Flask | Ensure dependencies are installed
+  ansible.builtin.debug:
+    msg: "Flask role will be implemented here."
