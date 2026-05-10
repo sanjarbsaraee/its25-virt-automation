@@ -16,7 +16,7 @@ locals {
     "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 1" }
     "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
-    "lb-01"        = { role = "lb",  ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
+    "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
   }
 }
 
@@ -36,6 +36,7 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
       infisical_client_id     = var.infisical_client_id,
       infisical_client_secret = var.infisical_client_secret,
       infisical_project_id    = var.infisical_project_id,
+      workspace_suffix        = local.env.name_suffix,
     })
     file_name = "ansible-bootstrap.yaml"
   }

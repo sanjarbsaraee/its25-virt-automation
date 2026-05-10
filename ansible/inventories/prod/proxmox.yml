@@ -38,13 +38,18 @@ want_facts: true
 # We pick the VM's own IP below in compose.
 want_proxmox_nodes_ansible_host: false
 
-# Create logical groups so playbooks can target hosts: web
-# instead of listing every web server by name.
+# Only include VMs whose name ends with this workspace's suffix.
+# Without this filter, a shared Proxmox host shows other teams' VMs.
+filters:
+  - "proxmox_name.endswith(lookup('env', 'WORKSPACE_SUFFIX') | default('', true))"
+
+# Group remaining VMs by their role prefix so playbooks can
+# target hosts: web instead of listing each server.
 groups:
-  control: "'control-node' in proxmox_name"
-  web:     "proxmox_name is match('^web-')"
-  db:      "proxmox_name is match('^db-')"
-  lb:      "proxmox_name is match('^lb-')"
+  control: "proxmox_name.startswith('control-node')"
+  web:     "proxmox_name.startswith('web-')"
+  db:      "proxmox_name.startswith('db-')"
+  lb:      "proxmox_name.startswith('lb-')"
 
 # proxmox_ipconfig0 looks like 'ip=192.168.50.140/24,...'.
 # regex_replace strips '/24' so ansible_host gets a clean IP.
