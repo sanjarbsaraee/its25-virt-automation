@@ -15,7 +15,7 @@ pg_shared_buffers: "256MB"
 pg_app_db: app
 pg_app_user: app_rw
 
-# Machines allowed to connect. Pulled from inventory
-# so it follows each workspace automatically.
-pg_allowed_clients:
-  - "{{ hostvars[groups['web'][0]]['ansible_host'] }}/32"
+# Hosts in the web group are allowed in. Pulled from
+# inventory so a new web server is picked up automatically
+# — no edit here. /32 means a single host, not a subnet.
+pg_allowed_clients: "{{ groups['web'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', '/32') | list }}"

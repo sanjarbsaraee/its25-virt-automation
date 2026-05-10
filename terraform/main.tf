@@ -12,8 +12,11 @@ locals {
   # One entry per VM. Adding a new machine means one line here.
   vm_fleet = {
     "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 2048, disk_size = 20, desc = "Ansible Control Node" }
-    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Web Server" }
+    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 1" }
+    "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
+    "lb-01"        = { role = "lb",  ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
+    
   }
 
   # Ansible needs VM names and IPs. This builds that list

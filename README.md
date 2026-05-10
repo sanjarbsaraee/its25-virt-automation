@@ -36,7 +36,7 @@ Automated infrastructure on Proxmox VE. Terraform provisions VMs, Ansible config
    +----------+----------+----------+
    |          |          |          |
 control-node web-01    db-01      future VMs
- (Ansible)   (Nginx)  (PostgreSQL)  added per iteration
+ (Ansible)   (Flask)  (PostgreSQL)  added per iteration
 ```
 
 We work from Windows laptops. Tailscale gives us access to the Proxmox host without exposing its management port to the internet. The HCP Terraform agent runs on the host because HCP's cloud runners cannot reach the Tailscale network.
@@ -57,7 +57,7 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 | VM | Role | IP address | Iteration | Description |
 |---|---|---|---|---|
 | `control-node` | Ansible controller | 192.168.50.10 | 1 | Runs playbooks against all other VMs |
-| `web-01` | Web server | 192.168.50.20 | 2 | Nginx, serves the application |
+| `web-01` | Web server | 192.168.50.20 | 2 | Flask + Gunicorn, serves the application |
 | `db-01` | Database server | 192.168.50.30 | 2 | PostgreSQL 16, access restricted to web tier in iter 2 |
 
 ---
@@ -82,7 +82,10 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 │   ├── playbooks/
 │   │   └── site.yml              # Orchestrator, one play per group
 │   ├── roles/
-│   │   └── control_node_check/   # Verifies packages and connectivity
+│   │   ├── control_node_check/   # Verifies packages and connectivity
+│   │   ├── common/               # Baseline packages and timezone
+│   │   ├── flask_app/            # Flask + Gunicorn as systemd service
+│   │   └── postgres_server/      # PostgreSQL 16, TLS, UFW
 │   └── collections/
 │       └── requirements.yml      # Galaxy collections (Infisical, PostgreSQL)
 │
@@ -93,6 +96,7 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 │
 ├── scripts/
 │   ├── verify-iter1.sh           # 11 checks run from a laptop over SSH
+│   ├── verify-iter2.sh           # 14 checks for web, db, TLS, firewall
 │   └── verify-node.sh            # General health check for any VM
 │
 ├── docs/                         # Setup guides and design records
@@ -111,7 +115,7 @@ Provisions VMs on Proxmox using the `bpg/proxmox` provider. Each VM is cloned fr
 
 ### Ansible
 
-Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Currently the only role is `control_node_check`, which verifies that Ansible, Git and Python are present, checks disk space and reports the host identity.
+Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Four roles: `control_node_check` (verifies packages and connectivity), `common` (baseline packages and timezone), `flask_app` (Flask behind Gunicorn as a systemd service), and `postgres_server` (PostgreSQL 16 with TLS and UFW). Database passwords are fetched from Infisical at runtime via the `infisical.vault` collection.
 
 ### Packer
 
@@ -217,6 +221,9 @@ All secrets live in Infisical, never in the repo. Terraform reads them at apply 
 | `TERRAFORM_BOT_PRIVATE_KEY` | SSH key the provider uses to upload cloud-init snippets |
 | `SANJAR_VM_PUBLIC_KEY` | Sanjar's public key, injected into VMs |
 | `JIM_VM_PUBLIC_KEY` | Jim's public key, injected into VMs |
+| `AUTOMATION_PUBLIC_KEY` | Fleet SSH public key for control-node to worker |
+| `AUTOMATION_PRIVATE_KEY` | Fleet SSH private key on control-node |
+| `DB_PASSWORD` | PostgreSQL app_rw password, fetched by Ansible at runtime |
 | `PKR_VAR_proxmox_token` | API key for Packer template builds |
 | `PKR_VAR_ssh_password` | Password Packer uses to SSH in and verify install |
 
@@ -264,6 +271,23 @@ bash scripts/verify-node.sh 192.168.50.10
 
 It detects whether the target is a control-node or a worker and adjusts its checks accordingly. Useful for troubleshooting after a deploy.
 
+**`verify-iter2.sh`** proves that iteration 2 works end-to-end. Run from a laptop:
+
+```bash
+bash scripts/verify-iter2.sh 192.168.50.20 192.168.50.30
+```
+
+The script runs 14 checks:
+
+| Category | What it checks |
+|---|---|
+| Connectivity | SSH to web-01 and db-01 |
+| Flask | GET /, /health, /info, db_reachable |
+| Process | Gunicorn runs as automation, service active |
+| PostgreSQL | Version 16 running, TLS cert exists |
+| TLS | TLS connection succeeds, non-TLS rejected |
+| Firewall | UFW active, port 5432 open from web |
+
 ---
 
 ## Design choices
@@ -303,8 +327,8 @@ We build the project in five iterations. Each adds a layer on top of the previou
 | # | Iteration | Status |
 |---|-----------|--------|
 | 1 | Foundation: control-node, Terraform pipeline, Ansible structure | 11/11 checks pass |
-| 2 | Three-tier: Nginx + PostgreSQL | Planned |
-| 3 | Load balancing: HAProxy + second web server | Planned |
+| 2 | Three-tier: Flask + PostgreSQL | 14/14 checks pass |
+| 3 | Load balancing: Nginx LB + second web server | Planned |
 | 4 | Network segmentation: firewall, VLAN | Planned |
 | 5 | Monitoring + hardening: Prometheus, Grafana, Wazuh, CIS benchmarks | Planned |
 

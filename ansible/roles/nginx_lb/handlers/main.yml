@@ -1,0 +1,6 @@
+# reload re-reads config without dropping connections.
+- name: reload nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+  become: true
