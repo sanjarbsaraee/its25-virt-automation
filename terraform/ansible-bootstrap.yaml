@@ -1,7 +1,7 @@
 #cloud-config
 # Sets up the control-node at first boot. Installs Ansible,
-# clones the repo, writes a list of VM addresses. Without
-# this, every rebuild needs manual setup.
+# clones the repo, configures Infisical access. Without this,
+# every rebuild needs manual setup.
 
 hostname: ${hostname}
 fqdn: ${hostname}.local
@@ -26,22 +26,15 @@ packages:
   - git
   - python3-pip
 
-# Ansible needs VM names and IPs to know which machines
-# to configure. This block writes that list at first boot.
 write_files:
-  - path: /tmp/hosts.yml
-    owner: automation:automation
-    permissions: "0644"
-    content: |
-      ${indent(6, inventory_content)}
   - path: /home/automation/.ssh/id_ed25519
     owner: automation:automation
     permissions: "0600"
     content: |
       ${indent(6, automation_private_key)}
 
-  # Infisical credentials for Ansible lookups. Written to
-  # /etc/environment so all shells and processes can read them.
+  # Infisical credentials for runtime lookups. The Proxmox
+  # inventory plugin and db_password both read from here.
   - path: /etc/environment
     append: true
     content: |
@@ -56,13 +49,6 @@ runcmd:
     https://github.com/sanjarbsaraee/its25-virt-automation.git
     /home/automation/its25-virt-automation
 
-  # Replaces the default address list in the repo with
-  # actual VM IPs from Terraform.
-  - mv /tmp/hosts.yml
-    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
-  - chown automation:automation
-    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
-
   # -p puts packages in ./collections, where Ansible
   # looks. Without it, packages land in ~/.ansible/.
   - sudo -u automation ansible-galaxy collection install -p
@@ -72,6 +58,10 @@ runcmd:
   # The infisical.vault Ansible collection needs this
   # Python package to talk to the Infisical API.
   - pip install infisicalsdk --break-system-packages
+
+  # The community.proxmox inventory plugin needs this
+  # Python package to query the Proxmox API at every run.
+  - pip install requests --break-system-packages
 
   # Ensure the automation user owns EVERYTHING in the
   # project folder to avoid permission errors.

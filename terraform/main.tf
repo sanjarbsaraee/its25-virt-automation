@@ -1,4 +1,5 @@
-# VMs and supporting resources on the Proxmox host.
+# Every VM in the project is created here. Without this
+# file the host has nothing to clone or configure.
 
 locals {
   env_config = {
@@ -16,28 +17,11 @@ locals {
     "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
     "lb-01"        = { role = "lb",  ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
-    
-  }
-
-  # Ansible needs VM names and IPs. This builds that list
-  # from vm_fleet so bootstrap can write it at first boot.
-  inventory = {
-    all = {
-      children = {
-        for role in distinct([for v in local.vm_fleet : v.role]) : role => {
-          hosts = {
-            for k, v in local.vm_fleet : "${k}${local.env.name_suffix}" => {
-              ansible_host       = "${var.lan_subnet}.${local.env.ip_base + v.ip_offset}"
-              ansible_connection = v.role == "control" ? "local" : null
-            } if v.role == role
-          }
-        }
-      }
-    }
   }
 }
 
-# Cloud-init files uploaded to Proxmox via SSH.
+# The control-node's first-boot setup. Lives on the host
+# so rebuilding the VM doesn't need a fresh upload from a laptop.
 resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   content_type = "snippets"
   datastore_id = "local"
@@ -48,7 +32,6 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
       jim_key                 = local.jim_key,
       automation_key          = local.automation_key,
       hostname                = "control-node${local.env.name_suffix}",
-      inventory_content       = yamlencode(local.inventory),
       automation_private_key  = local.automation_private_key,
       infisical_client_id     = var.infisical_client_id,
       infisical_client_secret = var.infisical_client_secret,
@@ -58,6 +41,8 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   }
 }
 
+# Without this, every cloned VM would get the template's
+# hostname instead of its own (web-01, db-01, etc.).
 resource "proxmox_virtual_environment_file" "vm_metadata" {
   for_each     = local.vm_fleet
   content_type = "snippets"
@@ -72,7 +57,6 @@ resource "proxmox_virtual_environment_file" "vm_metadata" {
   }
 }
 
-# Creates all VMs from the vm_fleet map above.
 resource "proxmox_virtual_environment_vm" "nodes" {
   for_each    = local.vm_fleet
   name        = "${each.key}${local.env.name_suffix}"
@@ -103,8 +87,8 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   initialization {
     datastore_id = "local-lvm"
 
-    # Control-node gets Ansible bootstrap, other VMs get
-    # only a hostname via metadata.
+    # Only the control-node runs the bootstrap script. The
+    # others just need their own hostname, not the full setup.
     user_data_file_id = each.value.role == "control" ? proxmox_virtual_environment_file.ansible_bootstrap.id : null
     meta_data_file_id = each.value.role != "control" ? proxmox_virtual_environment_file.vm_metadata[each.key].id : null
 
@@ -116,7 +100,7 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
 
     # Tailscale on the host hijacks DNS with 100.100.100.100.
-    # Public servers bypass that so cloud-init can reach the internet.
+    # Public DNS servers bypass that so cloud-init reaches the internet.
     dns {
       servers = ["1.1.1.1", "8.8.8.8"]
     }
@@ -127,6 +111,8 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
   }
 
+  # Proxmox rewrites these fields on every plan, so without
+  # ignore_changes Terraform would re-apply them forever.
   lifecycle {
     ignore_changes = [
       network_device,

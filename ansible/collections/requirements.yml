@@ -10,3 +10,9 @@ collections:
   # Manages databases, users, access rules and privileges on PostgreSQL.
   - name: community.postgresql
     version: "4.2.0"
+
+  # Queries the Proxmox API to build the inventory at runtime,
+  # so adding a VM in Terraform makes it visible to Ansible
+  # without manual edits.
+  - name: community.proxmox
+    version: "1.3.0"

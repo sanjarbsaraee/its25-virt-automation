@@ -1,0 +1,53 @@
+# Asks Proxmox at every Ansible run which VMs exist.
+# Replaces hosts.yml so adding a VM in Terraform is enough.
+
+plugin: community.proxmox.proxmox
+
+url: https://192.168.50.197:8006
+
+# The homelab uses a self-signed cert. Skip verification so
+# Ansible doesn't fail on every run with a TLS error.
+validate_certs: false
+
+# Read-only user. Cannot create or modify VMs, only list them.
+user: ansible@pve
+
+# Token pulled at runtime from Infisical so it stays out of git.
+# Same pattern as db_password in the postgres_server role.
+token_id: >-
+  {{ lookup('infisical.vault.read_secrets',
+            universal_auth_client_id=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_ID'),
+            universal_auth_client_secret=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET'),
+            project_id=lookup('env', 'INFISICAL_PROJECT_ID'),
+            env_slug='dev',
+            path='/',
+            secret_name='ANSIBLE_PROXMOX_TOKEN_ID').value }}
+token_secret: >-
+  {{ lookup('infisical.vault.read_secrets',
+            universal_auth_client_id=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_ID'),
+            universal_auth_client_secret=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET'),
+            project_id=lookup('env', 'INFISICAL_PROJECT_ID'),
+            env_slug='dev',
+            path='/',
+            secret_name='ANSIBLE_PROXMOX_TOKEN_SECRET').value }}
+
+# Without facts we only get VM names. We need their IPs too.
+want_facts: true
+
+# Default points ansible_host at the Proxmox node, not the VM.
+# We pick the VM's own IP below in compose.
+want_proxmox_nodes_ansible_host: false
+
+# Create logical groups so playbooks can target hosts: web
+# instead of listing every web server by name.
+groups:
+  control: "'control-node' in proxmox_name"
+  web:     "proxmox_name is match('^web-')"
+  db:      "proxmox_name is match('^db-')"
+  lb:      "proxmox_name is match('^lb-')"
+
+# proxmox_ipconfig0 looks like 'ip=192.168.50.140/24,...'.
+# regex_replace strips '/24' so ansible_host gets a clean IP.
+compose:
+  ansible_host: "proxmox_ipconfig0.ip | regex_replace('/.*$', '')"
+  ansible_connection: "'local' if 'control-node' in proxmox_name else 'ssh'"
