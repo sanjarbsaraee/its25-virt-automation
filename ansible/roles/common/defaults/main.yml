@@ -1,0 +1,2 @@
+# Overridable in group_vars without editing tasks.
+common_timezone: Europe/Stockholm

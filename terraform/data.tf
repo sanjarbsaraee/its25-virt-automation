@@ -16,11 +16,16 @@ locals {
   # Private key the provider uses to SSH into the host.
   terraform_bot_private_key = data.infisical_secrets.proxmox.secrets["TERRAFORM_BOT_PRIVATE_KEY"].value
 
-  # Public keys injected into VMs for human SSH access.
+  # Individual keys
+  sanjar_key     = data.infisical_secrets.proxmox.secrets["SANJAR_VM_PUBLIC_KEY"].value
+  jim_key        = data.infisical_secrets.proxmox.secrets["JIM_VM_PUBLIC_KEY"].value
+  automation_key = data.infisical_secrets.proxmox.secrets["AUTOMATION_PUBLIC_KEY"].value
+
+  # List used for VM creation
   vm_admin_public_keys = [
-    data.infisical_secrets.proxmox.secrets["SANJAR_VM_PUBLIC_KEY"].value,
-    data.infisical_secrets.proxmox.secrets["JIM_VM_PUBLIC_KEY"].value,
-    data.infisical_secrets.proxmox.secrets["AUTOMATION_PUBLIC_KEY"].value,
+    local.sanjar_key,
+    local.jim_key,
+    local.automation_key,
   ]
 
   # Automation key for control-node to worker-node communication.

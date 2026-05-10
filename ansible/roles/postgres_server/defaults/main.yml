@@ -1,0 +1,21 @@
+# Values that change between environments or PostgreSQL
+# versions live here, not in tasks.
+
+pg_version: 16
+pg_conf_dir: "/etc/postgresql/{{ pg_version }}/main"
+pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+
+pg_listen_address: "{{ ansible_default_ipv4.address }}"
+pg_max_connections: 100
+
+# 25% of 1024 MB RAM. PostgreSQL docs recommend roughly
+# 25% of system memory for shared_buffers.
+pg_shared_buffers: "256MB"
+
+pg_app_db: app
+pg_app_user: app_rw
+
+# Machines allowed to connect. Pulled from inventory
+# so it follows each workspace automatically.
+pg_allowed_clients:
+  - "{{ hostvars[groups['web'][0]]['ansible_host'] }}/32"

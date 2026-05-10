@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+# Runs Flask via Gunicorn, the process manager that handles
+# multiple requests at once. Restart=always brings it back
+# after crashes.
+[Unit]
+Description=Flask application (Gunicorn)
+After=network.target
+
+[Service]
+User={{ flask_app_user }}
+Group={{ flask_app_user }}
+WorkingDirectory={{ flask_app_dir }}
+ExecStart={{ flask_app_dir }}/venv/bin/gunicorn \
+    --workers {{ flask_gunicorn_workers }} \
+    --bind 0.0.0.0:{{ flask_app_port }} \
+    app:app
+Restart=always
+RestartSec=3
+
+# Database connection injected as environment variables.
+# The app reads these with os.environ.get().
+Environment=DB_HOST={{ db_host }}
+Environment=DB_PORT={{ db_port }}
+Environment=DB_NAME={{ db_name }}
+Environment=DB_USER={{ db_user }}
+Environment=DB_PASSWORD={{ db_password }}
+
+[Install]
+WantedBy=multi-user.target

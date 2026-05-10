@@ -1,0 +1,22 @@
+# Shared variables referenced by multiple roles.
+
+apt_cache_valid_time: 3600
+
+# Flask needs to know where the database lives. Pulled
+# from inventory so the value follows each workspace.
+db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+db_port: 5432
+db_name: app
+db_user: app_rw
+
+# Read from /etc/environment, written by cloud-init.
+infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
+
+# Fetched from Infisical at runtime. Never stored on disk.
+# The lookup returns an object with key and value —
+# .value extracts the password string.
+db_password: "{{ lookup('infisical.vault.read_secrets',
+  project_id=infisical_project_id,
+  env_slug='dev',
+  path='/',
+  secret_name='DB_PASSWORD').value }}"
