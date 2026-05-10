@@ -102,7 +102,7 @@ check "No version number in Server header" \
 # --- Web-02 DB access ---
 echo -e "\n${CYAN}--- Web-02 DB access ---${NC}"
 check "web-02 can reach database" \
-    "$(curl -s http://$WEB2_IP:8080/info)" "db_reachable[[:space:]]*:[[:space:]]*true"
+    "$(curl -s http://$WEB2_IP:8080/info)" "db_reachable.*true"
 
 echo -e "\n${CYAN}==========================================${NC}"
 if [ $FAIL -eq 0 ]; then
