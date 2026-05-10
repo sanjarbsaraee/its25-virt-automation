@@ -1,4 +1,4 @@
-﻿<html><head><meta charset='utf-8'><title>feat/common-flask</title><style>body{font-family:sans-serif;max-width:900px;margin:2em auto}h2{background:#eee;padding:.4em;border-left:4px solid #0969da;font-family:monospace}pre{background:#f6f8fa;padding:1em;white-space:pre-wrap;border:1px solid #ddd;font-size:.8em}</style></head><body><h1>feat/common-flask</h1><h2>.gitignore</h2><pre># Prevents secrets, generated files and editor clutter
+﻿<html><head><meta charset='utf-8'><title>feat/iteration-2</title><style>body{font-family:sans-serif;max-width:900px;margin:2em auto}h2{background:#eee;padding:.4em;border-left:4px solid #0969da;font-family:monospace}pre{background:#f6f8fa;padding:1em;white-space:pre-wrap;border:1px solid #ddd;font-size:.8em}</style></head><body><h1>feat/iteration-2</h1><h2>.gitignore</h2><pre># Prevents secrets, generated files and editor clutter
 # from reaching the repository.
 
 # ---------------------------------------------------------------------------
@@ -143,16 +143,7 @@ collections:
 
   # Manages databases, users, access rules and privileges on PostgreSQL.
   - name: community.postgresql
-    version: "4.2.0"</pre><h2>ansible\inventories\prod\group_vars\all.yml</h2><pre># Shared variables referenced by multiple roles.
-
-apt_cache_valid_time: 3600
-
-# Flask needs to know where the database lives. Pulled
-# from inventory so the value follows each workspace.
-db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
-db_port: 5432
-db_name: app
-db_user: app_rw</pre><h2>ansible\inventories\prod\group_vars\all\vars.yml</h2><pre># Shared variables referenced by multiple roles.
+    version: "4.2.0"</pre><h2>ansible\inventories\prod\group_vars\all\vars.yml</h2><pre># Shared variables referenced by multiple roles.
 
 apt_cache_valid_time: 3600
 
@@ -162,7 +153,18 @@ db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
 db_port: 5432
 db_name: app
 db_user: app_rw
-</pre><h2>ansible\inventories\prod\hosts.yml</h2><pre># Group names map to plays in site.yml. Plays target a
+
+# Read from /etc/environment, written by cloud-init.
+infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
+
+# Fetched from Infisical at runtime. Never stored on disk.
+# The lookup returns an object with key and value â€”
+# .value extracts the password string.
+db_password: "{{ lookup('infisical.vault.read_secrets',
+  project_id=infisical_project_id,
+  env_slug='dev',
+  path='/',
+  secret_name='DB_PASSWORD').value }}"</pre><h2>ansible\inventories\prod\hosts.yml</h2><pre># Group names map to plays in site.yml. Plays target a
 # group, not individual hosts.
 
 all:
@@ -310,87 +312,235 @@ common_timezone: Europe/Stockholm</pre><h2>ansible\roles\common\tasks\main.yml</
   when: groups['all'] | length &gt; 1
 
 
-</pre><h2>ansible\roles\flask_app\tasks\main.yml</h2><pre># Placeholder for Flask application deployment.
-# This role will handle dependencies, app files, and systemd setup in Iteration 2.
+</pre><h2>ansible\roles\flask_app\defaults\main.yml</h2><pre># Overridable in group_vars without editing tasks.
 
-- name: Flask | Ensure dependencies are installed
-  ansible.builtin.debug:
-    msg: "Flask role will be implemented here."
-</pre><h2>ansible\roles\postgres_server\defaults\main.yml</h2><pre># Defaults for postgres_server role
-</pre><h2>ansible\roles\postgres_server\handlers\main.yml</h2><pre># Handlers for postgres_server role
-
-- name: restart postgresql
-  ansible.builtin.service:
-    name: postgresql
+flask_app_dir: /opt/flask_app
+flask_app_user: automation
+flask_app_port: 8080
+flask_gunicorn_workers: 2</pre><h2>ansible\roles\flask_app\handlers\main.yml</h2><pre>- name: restart flask
+  ansible.builtin.systemd:
+    name: flask_app
     state: restarted
-</pre><h2>ansible\roles\postgres_server\tasks\main.yml</h2><pre># PostgreSQL Server Installation and Configuration
-# This role handles package installation, service management, database/user creation,
-# and network security (firewall and access controls).
+    # Tells systemd to re-read service files from disk
+    # before restarting. Without it, config changes in
+    # flask_app.service.j2 are ignored.
+    daemon_reload: true
+  become: true</pre><h2>ansible\roles\flask_app\tasks\main.yml</h2><pre># Without a background service, the app dies on
+# reboot or crash and nobody restarts it.
 
-- name: DB | Install PostgreSQL and UFW
+- name: Install Python and database client packages
   ansible.builtin.apt:
     name:
-      - postgresql
-      - python3-psycopg2  # Required for Ansible postgresql modules
+      - python3-venv
+      - python3-pip
+      # psql lets us debug database connections from
+      # the web node without installing the full server.
+      - postgresql-client
+    state: present
+  become: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ flask_app_dir }}"
+    state: directory
+    owner: "{{ flask_app_user }}"
+    group: "{{ flask_app_user }}"
+    mode: "0755"
+  become: true
+
+# "creates" tells Ansible to skip this step if the
+# venv already exists. Avoids rebuilding on every run.
+- name: Create virtual environment
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ flask_app_dir }}/venv
+    creates: "{{ flask_app_dir }}/venv/bin/activate"
+  become: true
+  become_user: "{{ flask_app_user }}"
+
+- name: Copy application files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ flask_app_dir }}/{{ item }}"
+    owner: "{{ flask_app_user }}"
+    group: "{{ flask_app_user }}"
+    mode: "0644"
+  loop:
+    - app.py
+    - requirements.txt
+  notify: restart flask
+
+- name: Install pip dependencies
+  ansible.builtin.pip:
+    requirements: "{{ flask_app_dir }}/requirements.txt"
+    virtualenv: "{{ flask_app_dir }}/venv"
+  become: true
+  become_user: "{{ flask_app_user }}"
+
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: flask_app.service.j2
+    dest: /etc/systemd/system/flask_app.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: restart flask
+
+- name: Start and enable flask service
+  ansible.builtin.systemd:
+    name: flask_app
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true</pre><h2>ansible\roles\postgres_server\defaults\main.yml</h2><pre># Values that change between environments or PostgreSQL
+# versions live here, not in tasks.
+
+pg_version: 16
+pg_conf_dir: "/etc/postgresql/{{ pg_version }}/main"
+pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+
+pg_listen_address: "{{ ansible_default_ipv4.address }}"
+pg_max_connections: 100
+
+# 25% of 1024 MB RAM. PostgreSQL docs recommend roughly
+# 25% of system memory for shared_buffers.
+pg_shared_buffers: "256MB"
+
+pg_app_db: app
+pg_app_user: app_rw
+
+# Machines allowed to connect. Pulled from inventory
+# so it follows each workspace automatically.
+pg_allowed_clients:
+  - "{{ hostvars[groups['web'][0]]['ansible_host'] }}/32"</pre><h2>ansible\roles\postgres_server\handlers\main.yml</h2><pre># reload re-reads pg_hba.conf without dropping connections.
+# restart re-reads everything but disconnects all clients.
+- name: reload postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    state: reloaded
+  become: true
+
+- name: restart postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    state: restarted
+  become: true</pre><h2>ansible\roles\postgres_server\tasks\main.yml</h2><pre># PostgreSQL accepts connections only from web tier and
+# requires TLS. Without these restrictions, any host on
+# the network can read the database.
+
+- name: DB | Add PGDG signing key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /etc/apt/trusted.gpg.d/pgdg.asc
+    mode: "0644"
+  become: true
+
+# PGDG is PostgreSQL's own package repo. Debian 12 ships
+# version 15 by default â€” PGDG gives us version 16.
+- name: DB | Add PGDG repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main"
+    filename: pgdg
+    state: present
+  become: true
+
+- name: DB | Install PostgreSQL
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ pg_version }}"
+      - "postgresql-contrib-{{ pg_version }}"
+      - python3-psycopg2
+      - acl
       - ufw
     state: present
-    update_cache: yes
+    update_cache: true
   become: true
 
-- name: DB | Ensure PostgreSQL is running
-  ansible.builtin.service:
-    name: postgresql
+# Self-signed cert for TLS between web and db.
+# "creates" skips this if the cert already exists.
+- name: DB | Generate self-signed TLS cert
+  ansible.builtin.command:
+    cmd: &gt;-
+      openssl req -new -x509 -days 365 -nodes
+      -out {{ pg_conf_dir }}/server.crt
+      -keyout {{ pg_conf_dir }}/server.key
+      -subj "/CN=db-01"
+    creates: "{{ pg_conf_dir }}/server.crt"
+  become: true
+  notify: restart postgresql
+
+- name: DB | Set cert permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: postgres
+    group: postgres
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ pg_conf_dir }}/server.crt", mode: "0644" }
+    - { path: "{{ pg_conf_dir }}/server.key", mode: "0600" }
+  become: true
+
+- name: DB | Deploy postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ pg_conf_dir }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: restart postgresql
+
+- name: DB | Deploy pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ pg_conf_dir }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: reload postgresql
+
+- name: DB | Start and enable PostgreSQL
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
     state: started
-    enabled: yes
+    enabled: true
+  become: true
 
-# NOTE: The following tasks require 'become_user: postgres' because default 
-# Linux security only allows the 'postgres' system user to manage the database.
-
+# become_user: postgres â€” only the postgres system user
+# can create databases and users in PostgreSQL.
 - name: DB | Create application database
   community.postgresql.postgresql_db:
-    name: "{{ db_name }}"
+    name: "{{ pg_app_db }}"
+    encoding: UTF-8
+    template: template0
   become: true
   become_user: postgres
 
-- name: DB | Create application user
+- name: DB | Create app user
   community.postgresql.postgresql_user:
-    name: "{{ db_user }}"
+    name: "{{ pg_app_user }}"
     password: "{{ db_password }}"
+    encrypted: true
+    role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB
   become: true
   become_user: postgres
+  # no_log hides the password from Ansible output.
+  no_log: true
 
-# Instead of maintaining massive template files, we use lineinfile 
-# to make surgical edits to the default configuration files.
-
-- name: DB | Allow remote connections in postgresql.conf
-  ansible.builtin.lineinfile:
-    path: /etc/postgresql/15/main/postgresql.conf
-    regexp: "^#?listen_addresses"
-    line: "listen_addresses = '*'"
-  become: true
-  notify: restart postgresql
-
-# We use 'scram-sha-256' as the authentication method as it is the 
-# modern standard (superior to the older md5).
-- name: DB | Allow web tier access in pg_hba.conf
-  ansible.builtin.lineinfile:
-    path: /etc/postgresql/15/main/pg_hba.conf
-    line: "host all all {{ hostvars[groups['web'][0]]['ansible_host'] }}/32 scram-sha-256"
-  become: true
-  notify: restart postgresql
-
-# --- Firewall Security ---
-# We restrict database access to ONLY the web server IP.
+# --- Firewall ---
+# Only web tier reaches port 5432. SSH stays open so
+# Ansible can still manage the node.
 
 - name: DB | Allow Postgres from web
   community.general.ufw:
     rule: allow
     port: "5432"
     proto: tcp
-    src: "{{ hostvars[groups['web'][0]]['ansible_host'] }}"
+    src: "{{ item }}"
+  loop: "{{ pg_allowed_clients | map('regex_replace', '/32$', '') | list }}"
   become: true
 
-# IMPORTANT: Always allow SSH before enabling UFW to avoid locking yourself out!
 - name: DB | Allow SSH
   community.general.ufw:
     rule: allow
@@ -401,8 +551,7 @@ common_timezone: Europe/Stockholm</pre><h2>ansible\roles\common\tasks\main.yml</
 - name: DB | Enable UFW
   community.general.ufw:
     state: enabled
-  become: true
-</pre><h2>packer\http\preseed.cfg</h2><pre># Unattended Debian 12 install for Packer. Produces the
+  become: true</pre><h2>packer\http\preseed.cfg</h2><pre># Unattended Debian 12 install for Packer. Produces the
 # golden template (ID 9001) that all project VMs clone from.
 
 # Locale set to Swedish region with English system language.
@@ -544,6 +693,116 @@ echo
 echo "=========================================="
 printf "Results: ${GREEN}%d${NC} passed, ${RED}%d${NC} failed\n" "$PASS" "$FAIL"
 echo "=========================================="
+
+exit "$FAIL"</pre><h2>scripts\verify-iter2.sh</h2><pre>#!/bin/bash
+# Catches iter 2 regressions after a deploy. Covers
+# Flask endpoints, PostgreSQL connectivity, TLS, and
+# firewall rules across web-01 and db-01.
+#
+# Usage: ./scripts/verify-iter2.sh &lt;web-ip&gt; &lt;db-ip&gt;
+# Example: ./scripts/verify-iter2.sh 192.168.50.120 192.168.50.130
+
+set -u
+
+WEB_IP="${1:?Usage: $0 &lt;web-ip&gt; &lt;db-ip&gt;}"
+DB_IP="${2:?Usage: $0 &lt;web-ip&gt; &lt;db-ip&gt;}"
+USER="automation"
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+PASS=0
+FAIL=0
+
+echo -e "${CYAN}==========================================${NC}"
+echo -e " Iter 2 Verification"
+echo -e " Web: ${YELLOW}$WEB_IP${NC}  DB: ${YELLOW}$DB_IP${NC}"
+echo -e "${CYAN}==========================================${NC}"
+
+run_ssh() {
+    local host=$1
+    local cmd=$2
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        "$USER@$host" "$cmd" 2&gt;/dev/null
+}
+
+check() {
+    local description=$1
+    local result=$2
+    local expected=$3
+
+    if echo "$result" | grep -q "$expected"; then
+        echo -e " ${GREEN}âœ“${NC} $description"
+        PASS=$((PASS + 1))
+    else
+        echo -e " ${RED}âœ—${NC} $description"
+        echo "   Expected: $expected"
+        echo "   Got: $result"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# --- Connectivity ---
+echo -e "\n${CYAN}--- Connectivity ---${NC}"
+check "SSH to web-01" "$(run_ssh $WEB_IP 'whoami')" "$USER"
+check "SSH to db-01" "$(run_ssh $DB_IP 'whoami')" "$USER"
+
+# --- Flask Endpoints ---
+# curl runs from the laptop, not over SSH.
+echo -e "\n${CYAN}--- Flask Endpoints ---${NC}"
+check "GET / returns HTML" \
+    "$(curl -s http://$WEB_IP:8080/)" "ITS25 Capstone Demo"
+check "GET /health returns ok" \
+    "$(curl -s http://$WEB_IP:8080/health)" "ok"
+check "GET /info returns JSON with db_reachable" \
+    "$(curl -s http://$WEB_IP:8080/info)" "db_reachable"
+# Matches both "db_reachable":true and "db_reachable": true
+# since Flask may or may not add a space after the colon.
+check "Database is reachable from Flask" \
+    "$(curl -s http://$WEB_IP:8080/info)" "db_reachable.*true"
+
+# --- Flask Process ---
+echo -e "\n${CYAN}--- Flask Process ---${NC}"
+# ps -o user= prints the full username without truncation.
+check "Gunicorn runs as $USER (not root)" \
+    "$(run_ssh $WEB_IP 'ps -o user= -p $(pgrep gunicorn | head -1)')" "$USER"
+check "flask_app service is active" \
+    "$(run_ssh $WEB_IP 'systemctl is-active flask_app')" "active"
+
+# --- PostgreSQL ---
+echo -e "\n${CYAN}--- PostgreSQL ---${NC}"
+check "PostgreSQL 16 is running" \
+    "$(run_ssh $DB_IP 'systemctl is-active postgresql@16-main')" "active"
+check "TLS cert exists" \
+    "$(run_ssh $DB_IP 'test -f /etc/postgresql/16/main/server.crt &amp;&amp; echo YES')" "YES"
+
+# --- TLS Enforcement ---
+# Reads the db password from the flask_app systemd service
+# so the script does not need credentials as input.
+echo -e "\n${CYAN}--- TLS Enforcement ---${NC}"
+PG_PWD_CMD="sudo systemctl show flask_app -p Environment | grep -o 'DB_PASSWORD=[^ ]*' | cut -d= -f2"
+check "TLS connection succeeds" \
+    "$(run_ssh $WEB_IP "PGPASSWORD=\$($PG_PWD_CMD) psql \"host=$DB_IP user=app_rw dbname=app sslmode=require\" -c \"SELECT 1;\" 2&gt;&amp;1")" "1 row"
+check "Non-TLS connection rejected" \
+    "$(run_ssh $WEB_IP "PGPASSWORD=\$($PG_PWD_CMD) psql \"host=$DB_IP user=app_rw dbname=app sslmode=disable\" -c \"SELECT 1;\" 2&gt;&amp;1")" "FATAL"
+
+# --- Firewall ---
+echo -e "\n${CYAN}--- Firewall ---${NC}"
+check "UFW active on db-01" \
+    "$(run_ssh $DB_IP 'sudo ufw status' 2&gt;/dev/null)" "active"
+check "Port 5432 open from web-01" \
+    "$(run_ssh $WEB_IP "nc -zv $DB_IP 5432 2&gt;&amp;1")" "open\|succeeded"
+
+echo -e "\n${CYAN}==========================================${NC}"
+if [ $FAIL -eq 0 ]; then
+    printf "${GREEN}PASSED:${NC} %d checks\n" "$PASS"
+else
+    printf "${RED}FAILED:${NC} %d checks (%d passed)\n" "$FAIL" "$PASS"
+fi
+echo -e "${CYAN}==========================================${NC}"
 
 exit "$FAIL"</pre><h2>scripts\verify-node.sh</h2><pre>#!/bin/bash
 # Verifies every VM meets the minimum requirements Ansible
@@ -693,13 +952,14 @@ write_files:
     content: |
       ${indent(6, automation_private_key)}
 
-  # We write the secret to /tmp first because creating it directly in the 
-  # project folder would make 'git clone' fail (folder must be empty).
-  - path: /tmp/secrets.yml
-    owner: automation:automation
-    permissions: "0600"
+  # Infisical credentials for Ansible lookups. Written to
+  # /etc/environment so all shells and processes can read them.
+  - path: /etc/environment
+    append: true
     content: |
-      db_password: "${db_password}"
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=${infisical_client_id}
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=${infisical_client_secret}
+      INFISICAL_PROJECT_ID=${infisical_project_id}
 
 # Cloud-init runs commands as root. "sudo -u automation"
 # makes automation own the files, not root.
@@ -721,16 +981,13 @@ runcmd:
     /home/automation/its25-virt-automation/ansible/collections -r
     /home/automation/its25-virt-automation/ansible/collections/requirements.yml
 
-  # Create the directory for group variables and move the secrets file there.
-  # This separates public vars from secret vars.
-  - mkdir -p
-    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all
-  - mv /tmp/secrets.yml
-    /home/automation/its25-virt-automation/ansible/inventories/prod/group_vars/all/secrets.yml
+  # The infisical.vault Ansible collection needs this
+  # Python package to talk to the Infisical API.
+  - pip install infisicalsdk --break-system-packages
 
-  # Ensure the automation user owns EVERYTHING in the project folder to avoid permission errors.
-  - chown -R automation:automation /home/automation/its25-virt-automation
-</pre><h2>terraform\data.tf</h2><pre># Pulls secrets from Infisical into local variables.
+  # Ensure the automation user owns EVERYTHING in the
+  # project folder to avoid permission errors.
+  - chown -R automation:automation /home/automation/its25-virt-automation</pre><h2>terraform\data.tf</h2><pre># Pulls secrets from Infisical into local variables.
 # Nothing sensitive lives in the repo or on local disk.
 
 # Fetches all secrets in one call. Individual values
@@ -762,10 +1019,7 @@ locals {
 
   # Automation key for control-node to worker-node communication.
   automation_private_key = data.infisical_secrets.proxmox.secrets["AUTOMATION_PRIVATE_KEY"].value
-
-  db_password = data.infisical_secrets.proxmox.secrets["DB_PASSWORD"].value
-}
-</pre><h2>terraform\main.tf</h2><pre># VMs and supporting resources on the Proxmox host.
+}</pre><h2>terraform\main.tf</h2><pre># VMs and supporting resources on the Proxmox host.
 
 locals {
   env_config = {
@@ -808,13 +1062,15 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   node_name    = var.proxmox_node_name
   source_raw {
     data = templatefile("${path.module}/ansible-bootstrap.yaml", {
-      sanjar_key             = local.sanjar_key,
-      jim_key                = local.jim_key,
-      automation_key         = local.automation_key,
-      hostname               = "control-node${local.env.name_suffix}",
-      inventory_content      = yamlencode(local.inventory),
-      automation_private_key = local.automation_private_key,
-      db_password            = local.db_password
+      sanjar_key              = local.sanjar_key,
+      jim_key                 = local.jim_key,
+      automation_key          = local.automation_key,
+      hostname                = "control-node${local.env.name_suffix}",
+      inventory_content       = yamlencode(local.inventory),
+      automation_private_key  = local.automation_private_key,
+      infisical_client_id     = var.infisical_client_id,
+      infisical_client_secret = var.infisical_client_secret,
+      infisical_project_id    = var.infisical_project_id,
     })
     file_name = "ansible-bootstrap.yaml"
   }
@@ -896,8 +1152,7 @@ resource "proxmox_virtual_environment_vm" "nodes" {
       cpu[0].flags
     ]
   }
-}
-</pre><h2>terraform\outputs.tf</h2><pre># Dynamic Fleet Status: Automatically includes every VM defined in the project.
+}</pre><h2>terraform\outputs.tf</h2><pre># Dynamic Fleet Status: Automatically includes every VM defined in the project.
 output "vm_fleet_status" {
   description = "A dynamic summary of all deployed VMs, their roles, IPs, and Proxmox IDs."
   value = {
@@ -1014,7 +1269,16 @@ variable "infisical_environment" {
   type        = string
   default     = "dev"
 }
+variable "infisical_client_id" {
+  description = "Client ID for Infisical Universal Auth, passed to control-node for Ansible lookups."
+  type        = string
+}
 
+variable "infisical_client_secret" {
+  description = "Client secret for Infisical Universal Auth, passed to control-node for Ansible lookups."
+  type        = string
+  sensitive   = true
+}
 # ---------------------------------------------------------------------------
 # Proxmox template
 # ---------------------------------------------------------------------------

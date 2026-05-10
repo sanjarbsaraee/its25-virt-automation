@@ -1,0 +1,51 @@
+# Without a load balancer, all traffic hits one web server.
+# If it goes down, the site is offline.
+
+- name: LB | Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+  become: true
+
+- name: LB | Remove default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  become: true
+  notify: reload nginx
+
+- name: LB | Deploy load balancer config
+  ansible.builtin.template:
+    src: nginx_lb.conf.j2
+    dest: /etc/nginx/sites-available/lb.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: reload nginx
+
+- name: LB | Enable load balancer site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/lb.conf
+    dest: /etc/nginx/sites-enabled/lb.conf
+    state: link
+  become: true
+  notify: reload nginx
+
+# Hides nginx version in responses so attackers cannot
+# target version-specific vulnerabilities.
+- name: LB | Hide nginx version in HTTP responses
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: "^(\\s*)#?\\s*server_tokens"
+    line: "    server_tokens off;"
+    insertafter: "http {"
+  become: true
+  notify: reload nginx
+
+- name: LB | Ensure nginx running and enabled
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true
+  become: true

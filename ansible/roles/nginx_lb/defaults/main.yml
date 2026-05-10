@@ -1,0 +1,4 @@
+# Port 80: where users reach the load balancer.
+# Port 8080: where each Flask backend listens.
+nginx_lb_listen_port: 80
+nginx_lb_backend_port: 8080
