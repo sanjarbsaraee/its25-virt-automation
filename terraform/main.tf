@@ -41,13 +41,15 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   node_name    = var.proxmox_node_name
   source_raw {
     data = templatefile("${path.module}/ansible-bootstrap.yaml", {
-      sanjar_key             = local.sanjar_key,
-      jim_key                = local.jim_key,
-      automation_key         = local.automation_key,
-      hostname               = "control-node${local.env.name_suffix}",
-      inventory_content      = yamlencode(local.inventory),
-      automation_private_key = local.automation_private_key,
-      db_password            = local.db_password
+      sanjar_key              = local.sanjar_key,
+      jim_key                 = local.jim_key,
+      automation_key          = local.automation_key,
+      hostname                = "control-node${local.env.name_suffix}",
+      inventory_content       = yamlencode(local.inventory),
+      automation_private_key  = local.automation_private_key,
+      infisical_client_id     = var.infisical_client_id,
+      infisical_client_secret = var.infisical_client_secret,
+      infisical_project_id    = var.infisical_project_id,
     })
     file_name = "ansible-bootstrap.yaml"
   }

@@ -1,0 +1,9 @@
+- name: restart flask
+  ansible.builtin.systemd:
+    name: flask_app
+    state: restarted
+    # Tells systemd to re-read service files from disk
+    # before restarting. Without it, config changes in
+    # flask_app.service.j2 are ignored.
+    daemon_reload: true
+  become: true

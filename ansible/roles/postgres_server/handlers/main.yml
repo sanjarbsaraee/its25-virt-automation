@@ -1,6 +1,13 @@
-# Handlers for postgres_server role
+# reload re-reads pg_hba.conf without dropping connections.
+# restart re-reads everything but disconnects all clients.
+- name: reload postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    state: reloaded
+  become: true
 
 - name: restart postgresql
-  ansible.builtin.service:
-    name: postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
     state: restarted
+  become: true

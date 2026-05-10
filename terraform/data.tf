@@ -30,6 +30,4 @@ locals {
 
   # Automation key for control-node to worker-node communication.
   automation_private_key = data.infisical_secrets.proxmox.secrets["AUTOMATION_PRIVATE_KEY"].value
-
-  db_password = data.infisical_secrets.proxmox.secrets["DB_PASSWORD"].value
 }

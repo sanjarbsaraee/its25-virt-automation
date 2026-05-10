@@ -1,5 +1,29 @@
-# Installs baseline packages and sets timezone on every VM.
+# Packages here are prerequisites for flask_app and
+# postgres_server. Without them, later roles fail.
 
-- name: Common | Placeholder
-  ansible.builtin.debug:
-    msg: "Common role will be implemented here."
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    # Skips update if cache is younger than this value
+    # (seconds). Defined in group_vars/all.yml.
+    cache_valid_time: "{{ apt_cache_valid_time }}"
+  become: true
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-apt
+      - python3-pip
+      - sudo
+      - curl
+      - ca-certificates
+      - gnupg
+      - lsb-release
+    state: present
+  become: true
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+  become: true

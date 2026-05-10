@@ -1,1 +1,18 @@
-# Jinja2 template for pg_hba.conf
+# {{ ansible_managed }}
+# Controls who connects, from where, and how they
+# authenticate. Order matters — first match wins.
+
+# Local connections for the postgres admin user.
+local   all             postgres                                peer
+
+# Local connections for all other users.
+local   all             all                                     scram-sha-256
+
+# Remote connections from allowed clients only, TLS required.
+{% for client in pg_allowed_clients %}
+hostssl {{ pg_app_db }} {{ pg_app_user }} {{ client }} scram-sha-256
+{% endfor %}
+
+# Reject everything else explicitly.
+host    all             all                 0.0.0.0/0           reject
+host    all             all                 ::/0                reject

@@ -1,6 +1,68 @@
-# Placeholder for Flask application deployment.
-# This role will handle dependencies, app files, and systemd setup in Iteration 2.
+# Without a background service, the app dies on
+# reboot or crash and nobody restarts it.
 
-- name: Flask | Ensure dependencies are installed
-  ansible.builtin.debug:
-    msg: "Flask role will be implemented here."
+- name: Install Python and database client packages
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-pip
+      # psql lets us debug database connections from
+      # the web node without installing the full server.
+      - postgresql-client
+    state: present
+  become: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ flask_app_dir }}"
+    state: directory
+    owner: "{{ flask_app_user }}"
+    group: "{{ flask_app_user }}"
+    mode: "0755"
+  become: true
+
+# "creates" tells Ansible to skip this step if the
+# venv already exists. Avoids rebuilding on every run.
+- name: Create virtual environment
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ flask_app_dir }}/venv
+    creates: "{{ flask_app_dir }}/venv/bin/activate"
+  become: true
+  become_user: "{{ flask_app_user }}"
+
+- name: Copy application files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ flask_app_dir }}/{{ item }}"
+    owner: "{{ flask_app_user }}"
+    group: "{{ flask_app_user }}"
+    mode: "0644"
+  loop:
+    - app.py
+    - requirements.txt
+  notify: restart flask
+
+- name: Install pip dependencies
+  ansible.builtin.pip:
+    requirements: "{{ flask_app_dir }}/requirements.txt"
+    virtualenv: "{{ flask_app_dir }}/venv"
+  become: true
+  become_user: "{{ flask_app_user }}"
+
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: flask_app.service.j2
+    dest: /etc/systemd/system/flask_app.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: restart flask
+
+- name: Start and enable flask service
+  ansible.builtin.systemd:
+    name: flask_app
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true

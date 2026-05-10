@@ -1,0 +1,6 @@
+# Overridable in group_vars without editing tasks.
+
+flask_app_dir: /opt/flask_app
+flask_app_user: automation
+flask_app_port: 8080
+flask_gunicorn_workers: 2
