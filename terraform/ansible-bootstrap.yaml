@@ -60,8 +60,8 @@ runcmd:
 
   # pipx venvs can't see system-wide pip packages. The Proxmox
   # plugin needs requests; the Infisical lookup needs the SDK.
-  - sudo -u automation /home/automation/.local/bin/pipx inject ansible requests
-  - sudo -u automation /home/automation/.local/bin/pipx inject ansible infisicalsdk
+  - sudo -u automation pipx inject ansible requests
+  - sudo -u automation pipx inject ansible infisicalsdk
 
   # -p puts packages in ./collections, where Ansible looks.
   # Without it, packages land in ~/.ansible/.

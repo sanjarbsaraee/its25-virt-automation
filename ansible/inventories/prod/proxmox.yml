@@ -38,6 +38,10 @@ want_facts: true
 # We pick the VM's own IP below in compose.
 want_proxmox_nodes_ansible_host: false
 
+# Don't include the Proxmox host itself. Ansible should
+# only touch VMs, not the hypervisor.
+exclude_nodes: true
+
 # Only include VMs whose name ends with this workspace's suffix.
 # Without this filter, a shared Proxmox host shows other teams' VMs.
 filters:
