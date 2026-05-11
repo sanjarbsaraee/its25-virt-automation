@@ -26,8 +26,8 @@
         # Keep PAM active for automation user sudo
         ssh_use_pam: true
 
-        # Allow forwarding temporarily so you can view the site locally
-        ssh_allow_tcp_forwarding: "yes"
+        # Disable forwarding
+        ssh_allow_tcp_forwarding: "no"
         ssh_allow_agent_forwarding: false
         ssh_x11_forwarding: false
 
