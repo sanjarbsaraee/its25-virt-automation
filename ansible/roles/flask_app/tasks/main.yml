@@ -66,3 +66,12 @@
     enabled: true
     daemon_reload: true
   become: true
+
+- name: UFW | Allow Flask from load balancer
+  community.general.ufw:
+    rule: allow
+    port: "8080"
+    proto: tcp
+    src: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
+    comment: "Flask from LB"
+  become: true

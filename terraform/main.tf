@@ -82,8 +82,9 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   }
 
   network_device {
-    bridge = var.lan_bridge
-    model  = "virtio"
+    bridge   = var.lan_bridge
+    model    = "virtio"
+    firewall = true
   }
 
   initialization {
