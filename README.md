@@ -33,10 +33,10 @@ Automated infrastructure on Proxmox VE. Terraform provisions VMs, Ansible config
               |
               +-- HCP Terraform agent (runs plans and applies)
               |
-   +----------+----------+----------+
-   |          |          |          |
-control-node web-01    db-01      future VMs
- (Ansible)   (Flask)  (PostgreSQL)  added per iteration
+   +----------+----------+----------+----------+----------+
+   |          |          |          |          |          |
+control-node lb-01    web-01    web-02     db-01    (monitor-01)
+ (Ansible)   (Nginx LB) (Flask)  (Flask)  (PostgreSQL) (iter 5)
 ```
 
 We work from Windows laptops. Tailscale gives us access to the Proxmox host without exposing its management port to the internet. The HCP Terraform agent runs on the host because HCP's cloud runners cannot reach the Tailscale network.
@@ -58,7 +58,10 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 |---|---|---|---|---|
 | `control-node` | Ansible controller | 192.168.50.10 | 1 | Runs playbooks against all other VMs |
 | `web-01` | Web server | 192.168.50.20 | 2 | Flask + Gunicorn, serves the application |
-| `db-01` | Database server | 192.168.50.30 | 2 | PostgreSQL 16, access restricted to web tier in iter 2 |
+| `web-02` | Web server | 192.168.50.21 | 3 | Second backend behind the load balancer |
+| `db-01` | Database server | 192.168.50.30 | 2 | PostgreSQL 16, access restricted to web tier |
+| `lb-01` | Load balancer | 192.168.50.40 | 3 | Nginx LB, round-robin to web-01 and web-02 |
+| `monitor-01` | Monitoring server | 192.168.50.50 | 5 | Prometheus + Grafana (planned) |
 
 ---
 
@@ -78,16 +81,19 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 ├── ansible/
 │   ├── ansible.cfg               # Paths, output format, SSH pipelining
 │   ├── inventories/prod/
-│   │   └── hosts.yml             # Host groups mapped to plays
+│   │   ├── proxmox.yml           # Dynamic inventory (community.proxmox.proxmox)
+│   │   └── group_vars/
+│   │       └── all/vars.yml      # db_host (dynamic), db_password (Infisical lookup)
 │   ├── playbooks/
 │   │   └── site.yml              # Orchestrator, one play per group
 │   ├── roles/
 │   │   ├── control_node_check/   # Verifies packages and connectivity
 │   │   ├── common/               # Baseline packages and timezone
 │   │   ├── flask_app/            # Flask + Gunicorn as systemd service
-│   │   └── postgres_server/      # PostgreSQL 16, TLS, UFW
+│   │   ├── postgres_server/      # PostgreSQL 16, TLS, UFW
+│   │   └── nginx_lb/             # Nginx as round-robin LB
 │   └── collections/
-│       └── requirements.yml      # Galaxy collections (Infisical, PostgreSQL)
+│       └── requirements.yml      # Galaxy collections (Infisical, PostgreSQL, Proxmox)
 │
 ├── packer/
 │   ├── debian-12-gold.pkr.hcl    # Builds the golden template (ID 9001)
@@ -97,6 +103,7 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 ├── scripts/
 │   ├── verify-iter1.sh           # 11 checks run from a laptop over SSH
 │   ├── verify-iter2.sh           # 14 checks for web, db, TLS, firewall
+│   ├── verify-iter3.sh           # 11 checks for LB, redundancy, end-to-end
 │   └── verify-node.sh            # General health check for any VM
 │
 ├── docs/                         # Setup guides and design records
@@ -115,7 +122,9 @@ Provisions VMs on Proxmox using the `bpg/proxmox` provider. Each VM is cloned fr
 
 ### Ansible
 
-Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Four roles: `control_node_check` (verifies packages and connectivity), `common` (baseline packages and timezone), `flask_app` (Flask behind Gunicorn as a systemd service), and `postgres_server` (PostgreSQL 16 with TLS and UFW). Database passwords are fetched from Infisical at runtime via the `infisical.vault` collection.
+Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Five roles: `control_node_check` (verifies packages and connectivity), `common` (baseline packages and timezone), `flask_app` (Flask behind Gunicorn as a systemd service), `postgres_server` (PostgreSQL 16 with TLS and UFW), and `nginx_lb` (Nginx as round-robin load balancer with dynamic upstream from inventory). Database passwords are fetched from Infisical at runtime via the `infisical.vault` collection.
+
+Since iteration 3, Ansible uses dynamic inventory via the `community.proxmox.proxmox` plugin instead of a static `hosts.yml`. The plugin queries the Proxmox API at every Ansible invocation and filters VMs by workspace suffix, so Sanjar's, Jim's, and main workspaces stay isolated on the same Proxmox host.
 
 ### Packer
 
@@ -288,6 +297,23 @@ The script runs 14 checks:
 | TLS | TLS connection succeeds, non-TLS rejected |
 | Firewall | UFW active, port 5432 open from web |
 
+**`verify-iter3.sh`** proves that iteration 3 works end-to-end. Run from a laptop:
+
+```bash
+bash scripts/verify-iter3.sh 192.168.50.40 192.168.50.20 192.168.50.21
+```
+
+Arguments: lb-01 IP, web-01 IP, web-02 IP. The script runs 11 checks:
+
+| Category | What it checks |
+|---|---|
+| Connectivity | SSH to lb-01, web-01, web-02 |
+| Nginx | Service running, listening on port 80 |
+| Round-robin | Multiple requests hit different backends |
+| Failover | Stopping a backend removes it from the pool |
+| `server_tokens off` | HTTP response does not leak Nginx version |
+| Idempotence | Re-running playbook shows `changed=0` |
+
 ---
 
 ## Design choices
@@ -326,11 +352,11 @@ We build the project in five iterations. Each adds a layer on top of the previou
 
 | # | Iteration | Status |
 |---|-----------|--------|
-| 1 | Foundation: control-node, Terraform pipeline, Ansible structure | 11/11 checks pass |
-| 2 | Three-tier: Flask + PostgreSQL | 14/14 checks pass |
-| 3 | Load balancing: Nginx LB + second web server | Planned |
-| 4 | Network segmentation: firewall, VLAN | Planned |
-| 5 | Monitoring + hardening: Prometheus, Grafana, Wazuh, CIS benchmarks | Planned |
+| 1 | Foundation: control-node, Terraform pipeline, Ansible structure | Merged to main, 11/11 checks pass |
+| 2 | Three-tier: Flask + PostgreSQL with TLS | Merged to main, 14/14 checks pass |
+| 3 | Load balancing: Nginx LB + second web server + dynamic inventory | Functionally complete on `feat/dynamic-inventory`, 11/11 checks pass |
+| 4 | Network hardening: UFW + Proxmox firewall + SSH hardening (`devsec.hardening`) | Planned |
+| 5 | Monitoring + hardening: Prometheus, Grafana, node_exporter, pgaudit, `devsec.hardening.os_hardening`, Goss | Planned |
 
 ---
 
