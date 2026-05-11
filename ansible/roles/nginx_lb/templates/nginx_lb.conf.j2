@@ -4,7 +4,7 @@
 # web server to the 'web' group is enough.
 
 upstream flask_backends {
-{% for host in groups['web'] %}
+{% for host in groups['web'] | sort %}
     server {{ hostvars[host]['ansible_host'] }}:{{ nginx_lb_backend_port }};
 {% endfor %}
 }

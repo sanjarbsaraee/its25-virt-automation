@@ -18,4 +18,4 @@ pg_app_user: app_rw
 # Hosts in the web group are allowed in. Pulled from
 # inventory so a new web server is picked up automatically
 # — no edit here. /32 means a single host, not a subnet.
-pg_allowed_clients: "{{ groups['web'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', '/32') | list }}"
+pg_allowed_clients: "{{ groups['web'] | sort | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', '/32') | list }}"
