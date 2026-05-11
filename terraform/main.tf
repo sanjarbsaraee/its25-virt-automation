@@ -10,7 +10,7 @@ locals {
 
   env = lookup(local.env_config, terraform.workspace, local.env_config["its25-virt-automation"])
 
-  # One entry per VM. Adding a new machine means one line here.
+  # One entry per VM. Adding a machine means one line here.
   vm_fleet = {
     "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 2048, disk_size = 20, desc = "Ansible Control Node" }
     "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 1" }
@@ -20,8 +20,8 @@ locals {
   }
 }
 
-# The control-node's first-boot setup. Lives on the host
-# so rebuilding the VM doesn't need a fresh upload from a laptop.
+# First-boot setup for the control-node. Lives on the host
+# so a rebuild does not need a fresh upload from a laptop.
 resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   content_type = "snippets"
   datastore_id = "local"
@@ -43,8 +43,8 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   }
 }
 
-# Without this, every cloned VM would get the template's
-# hostname instead of its own (web-01, db-01, etc.).
+# Gives each cloned VM its own hostname (web-01, db-01...).
+# Without this they would all inherit the template's name.
 resource "proxmox_virtual_environment_file" "vm_metadata" {
   for_each     = local.vm_fleet
   content_type = "snippets"
@@ -91,7 +91,7 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     datastore_id = "local-lvm"
 
     # Only the control-node runs the bootstrap script. The
-    # others just need their own hostname, not the full setup.
+    # others need a hostname, not the full setup.
     user_data_file_id = each.value.role == "control" ? proxmox_virtual_environment_file.ansible_bootstrap.id : null
     meta_data_file_id = each.value.role != "control" ? proxmox_virtual_environment_file.vm_metadata[each.key].id : null
 
@@ -103,7 +103,7 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
 
     # Tailscale on the host hijacks DNS with 100.100.100.100.
-    # Public DNS servers bypass that so cloud-init reaches the internet.
+    # Public servers bypass that so cloud-init reaches apt.
     dns {
       servers = ["1.1.1.1", "8.8.8.8"]
     }
@@ -114,13 +114,13 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
   }
 
-  # Proxmox rewrites these fields on every plan, so without
-  # ignore_changes Terraform would re-apply them forever.
+  # Proxmox rewrites these fields after VM creation. Without
+  # ignoring them, terraform plan shows false drift every run.
   lifecycle {
     ignore_changes = [
-      network_device,
       initialization[0].user_account,
-      cpu[0].flags
+      initialization[0].dns,
+      cpu[0].flags,
     ]
   }
 }
