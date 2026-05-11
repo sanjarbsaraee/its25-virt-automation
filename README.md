@@ -75,6 +75,7 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 │   ├── variables.tf              # Input variables with defaults
 │   ├── data.tf                   # Pulls secrets from Infisical
 │   ├── main.tf                   # VM fleet via for_each loop
+│   ├── firewall.tf               # Proxmox firewall: security groups, VM rules
 │   ├── outputs.tf                # IPs and VM IDs for Ansible
 │   └── ansible-bootstrap.yaml    # Cloud-init template for control-node
 │
@@ -88,12 +89,12 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 │   │   └── site.yml              # Orchestrator, one play per group
 │   ├── roles/
 │   │   ├── control_node_check/   # Verifies packages and connectivity
-│   │   ├── common/               # Baseline packages and timezone
+│   │   ├── common/               # Baseline packages, timezone, UFW
 │   │   ├── flask_app/            # Flask + Gunicorn as systemd service
 │   │   ├── postgres_server/      # PostgreSQL 16, TLS, UFW
 │   │   └── nginx_lb/             # Nginx as round-robin LB
 │   └── collections/
-│       └── requirements.yml      # Galaxy collections (Infisical, PostgreSQL, Proxmox)
+│       └── requirements.yml      # Galaxy collections
 │
 ├── packer/
 │   ├── debian-12-gold.pkr.hcl    # Builds the golden template (ID 9001)
@@ -104,6 +105,7 @@ Each HCP Terraform workspace (main, sanjar-dev, jim-dev) shifts VM IDs and IPs s
 │   ├── verify-iter1.sh           # 11 checks run from a laptop over SSH
 │   ├── verify-iter2.sh           # 14 checks for web, db, TLS, firewall
 │   ├── verify-iter3.sh           # 11 checks for LB, redundancy, end-to-end
+│   ├── verify-iter4.sh           # 14 checks for firewall and SSH hardening
 │   └── verify-node.sh            # General health check for any VM
 │
 ├── docs/                         # Setup guides and design records
@@ -122,7 +124,7 @@ Provisions VMs on Proxmox using the `bpg/proxmox` provider. Each VM is cloned fr
 
 ### Ansible
 
-Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Five roles: `control_node_check` (verifies packages and connectivity), `common` (baseline packages and timezone), `flask_app` (Flask behind Gunicorn as a systemd service), `postgres_server` (PostgreSQL 16 with TLS and UFW), and `nginx_lb` (Nginx as round-robin load balancer with dynamic upstream from inventory). Database passwords are fetched from Infisical at runtime via the `infisical.vault` collection.
+Configures VMs after they boot. Playbooks run from the control-node, not from our laptops. The `site.yml` file maps each host group to its roles. Five roles: `control_node_check` (verifies packages and connectivity), `common` (baseline packages, timezone, UFW with default-deny), `flask_app` (Flask behind Gunicorn as a systemd service), `postgres_server` (PostgreSQL 16 with TLS and UFW), and `nginx_lb` (Nginx as round-robin load balancer with dynamic upstream from inventory). Database passwords are fetched from Infisical at runtime via the `infisical.vault` collection.
 
 Since iteration 3, Ansible uses dynamic inventory via the `community.proxmox.proxmox` plugin instead of a static `hosts.yml`. The plugin queries the Proxmox API at every Ansible invocation and filters VMs by workspace suffix, so Sanjar's, Jim's, and main workspaces stay isolated on the same Proxmox host.
 
@@ -145,6 +147,14 @@ Stores Terraform state remotely so we both work against the same state file. Thr
 ### Cloud-init
 
 A YAML snippet (`ansible-bootstrap.yaml`) that Proxmox passes to the control-node at first boot. It creates the `automation` user, installs packages, clones this repo, writes a Terraform-generated inventory with VM names and IPs, and installs Galaxy collections. This is what makes the two-command flow possible.
+
+### Firewall
+
+Two filter layers block traffic to each VM. Proxmox firewall runs in the host machine and filters before the packet reaches the VM. UFW runs inside each VM and filters again. A bug in either layer does not expose the VM.
+
+Proxmox rules are declared in `terraform/firewall.tf` as reusable cluster security groups (`ssh-from-mgmt`, `http-public`, `flask-from-lb`, `pg-from-web`). Each VM binds the groups its role needs through a single `firewall_rules` resource. UFW rules live in the Ansible roles: a baseline in `common` (default-deny incoming, rate-limited SSH from LAN and Tailscale) and role-specific allows in `flask_app`, `postgres_server`, and `nginx_lb`.
+
+SSH hardening uses the `devsec.hardening.ssh_hardening` role from Galaxy with CIS-aligned defaults. Root login and password authentication are disabled. Verification: `bash scripts/verify-iter4.sh <ctrl> <web1> <web2> <db> <lb>`.
 
 ---
 
@@ -254,15 +264,15 @@ The Terraform secrets are configured in all three HCP Terraform workspaces so th
 
 ## Verification
 
-Two scripts, different purposes:
+One verify script per iteration plus a generic node check. All run from a laptop and SSH into the target VMs.
 
-**`verify-iter1.sh`** proves that iteration 1 works end-to-end. Run from a laptop:
+**`verify-iter1.sh`** proves that iteration 1 works end-to-end:
 
 ```bash
 bash scripts/verify-iter1.sh 192.168.50.10
 ```
 
-The script SSHs into the control-node and runs 11 checks:
+11 checks:
 
 | Category | What it checks |
 |---|---|
@@ -272,21 +282,13 @@ The script SSHs into the control-node and runs 11 checks:
 | Galaxy | Infisical collection installed in `./collections` |
 | Playbook | First run succeeds, second run is idempotent |
 
-**`verify-node.sh`** checks general health on any VM. Run from a laptop:
-
-```bash
-bash scripts/verify-node.sh 192.168.50.10
-```
-
-It detects whether the target is a control-node or a worker and adjusts its checks accordingly. Useful for troubleshooting after a deploy.
-
-**`verify-iter2.sh`** proves that iteration 2 works end-to-end. Run from a laptop:
+**`verify-iter2.sh`** proves that iteration 2 works end-to-end:
 
 ```bash
 bash scripts/verify-iter2.sh 192.168.50.20 192.168.50.30
 ```
 
-The script runs 14 checks:
+14 checks:
 
 | Category | What it checks |
 |---|---|
@@ -297,13 +299,13 @@ The script runs 14 checks:
 | TLS | TLS connection succeeds, non-TLS rejected |
 | Firewall | UFW active, port 5432 open from web |
 
-**`verify-iter3.sh`** proves that iteration 3 works end-to-end. Run from a laptop:
+**`verify-iter3.sh`** proves that iteration 3 works end-to-end:
 
 ```bash
 bash scripts/verify-iter3.sh 192.168.50.40 192.168.50.20 192.168.50.21
 ```
 
-Arguments: lb-01 IP, web-01 IP, web-02 IP. The script runs 11 checks:
+Arguments: lb-01 IP, web-01 IP, web-02 IP. 11 checks:
 
 | Category | What it checks |
 |---|---|
@@ -313,6 +315,29 @@ Arguments: lb-01 IP, web-01 IP, web-02 IP. The script runs 11 checks:
 | Failover | Stopping a backend removes it from the pool |
 | `server_tokens off` | HTTP response does not leak Nginx version |
 | Idempotence | Re-running playbook shows `changed=0` |
+
+**`verify-iter4.sh`** proves that iteration 4 works end-to-end:
+
+```bash
+bash scripts/verify-iter4.sh 192.168.50.10 192.168.50.20 192.168.50.21 192.168.50.30 192.168.50.40
+```
+
+Arguments: control-node, web-01, web-02, db-01, lb-01. 14 checks:
+
+| Category | What it checks |
+|---|---|
+| UFW status | Active and default-deny on every VM |
+| SSH hardening | Root login disabled, password auth disabled |
+| Allowed traffic | lb-01 reaches web-01:8080, web-01 reaches db-01:5432 |
+| Blocked traffic | db-01 cannot reach web-01:8080, lb-01 cannot reach db-01:5432 |
+
+**`verify-node.sh`** checks general health on any VM:
+
+```bash
+bash scripts/verify-node.sh 192.168.50.10
+```
+
+It detects whether the target is a control-node or a worker and adjusts its checks accordingly. Useful for troubleshooting after a deploy.
 
 ---
 
@@ -342,6 +367,10 @@ Terraform provisions infrastructure (VMs, networks, disks). Ansible configures w
 
 We each have a dev workspace with its own VM IDs and IP addresses. This lets us test changes without risking the main environment. The offset scheme (+100 for Sanjar, +200 for Jim) is simple and leaves room for growth.
 
+### Why two firewall layers instead of one?
+
+Proxmox firewall runs in the host machine, UFW runs inside each VM. If we misconfigure one or a bug slips through, the other still blocks the traffic. The alternative, a single dedicated firewall VM routing all traffic, was rejected as overengineered for a five-VM lab and harder to defend in the oral presentation. Two filters give the same defense in depth with far less code.
+
 *More design choices added as iterations progress.*
 
 ---
@@ -354,8 +383,8 @@ We build the project in five iterations. Each adds a layer on top of the previou
 |---|-----------|--------|
 | 1 | Foundation: control-node, Terraform pipeline, Ansible structure | Merged to main, 11/11 checks pass |
 | 2 | Three-tier: Flask + PostgreSQL with TLS | Merged to main, 14/14 checks pass |
-| 3 | Load balancing: Nginx LB + second web server + dynamic inventory | Functionally complete on `feat/dynamic-inventory`, 11/11 checks pass |
-| 4 | Network hardening: UFW + Proxmox firewall + SSH hardening (`devsec.hardening`) | Planned |
+| 3 | Load balancing: Nginx LB + second web server + dynamic inventory | Merged to main, 11/11 checks pass |
+| 4 | Network hardening: UFW + Proxmox firewall + SSH hardening (`devsec.hardening`) | Documented, ready to verify on `iter4-test` |
 | 5 | Monitoring + hardening: Prometheus, Grafana, node_exporter, pgaudit, `devsec.hardening.os_hardening`, Goss | Planned |
 
 ---
