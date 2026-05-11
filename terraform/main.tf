@@ -118,7 +118,6 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   # ignore_changes Terraform would re-apply them forever.
   lifecycle {
     ignore_changes = [
-      network_device,
       initialization[0].user_account,
       cpu[0].flags
     ]

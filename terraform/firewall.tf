@@ -45,14 +45,23 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh_from
 # Allows public HTTP access (port 80) to the load balancer.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "http_public" {
   name    = "http-public"
-  comment = "Allow HTTP from anywhere (load balancer ingress)"
+  comment = "Allow public HTTP/HTTPS access"
 
   rule {
     type    = "in"
     action  = "ACCEPT"
     proto   = "tcp"
     dport   = "80"
-    comment = "HTTP public"
+    comment = "HTTP"
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "80"
+    source  = "100.64.0.0/10"
+    comment = "Tailscale HTTP"
   }
 }
 
