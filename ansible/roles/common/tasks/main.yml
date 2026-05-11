@@ -55,6 +55,15 @@
     comment: "SSH from management"
   become: true
 
+- name: UFW | Allow SSH from Tailscale subnet
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    src: "100.64.0.0/10"
+    comment: "Tailscale remote SSH"
+  become: true
+
 - name: UFW | Enable UFW
   community.general.ufw:
     state: enabled
