@@ -113,13 +113,12 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
   }
 
-  # Proxmox rewrites network and cpu fields on every plan.
-  # user_data_file_id is ignored so bootstrap edits don't rebuild VMs.
+  # Proxmox rewrites these fields on every plan, so without
+  # ignore_changes Terraform would re-apply them forever.
   lifecycle {
     ignore_changes = [
       network_device,
       initialization[0].user_account,
-      initialization[0].user_data_file_id,
       cpu[0].flags
     ]
   }
