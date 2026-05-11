@@ -75,3 +75,8 @@
   community.general.ufw:
     state: enabled
   become: true
+
+# UFW Enable resets the kernel's list of open connections.
+# Without rebuilding SSH here, the next task hangs silently.
+- name: UFW | Reset SSH after firewall enable
+  ansible.builtin.meta: reset_connection
