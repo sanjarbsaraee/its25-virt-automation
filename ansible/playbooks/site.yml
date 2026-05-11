@@ -20,8 +20,8 @@
 
         # Only key auth, no root login
         ssh_permit_root_login: "no"
-        ssh_password_authentication: false
-        ssh_challenge_response_authentication: false
+        ssh_server_password_login: false
+        ssh_challengeresponseauthentication: false
 
         # Keep PAM active for automation user sudo
         ssh_use_pam: true
