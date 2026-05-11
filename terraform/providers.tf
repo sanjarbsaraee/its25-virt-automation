@@ -24,7 +24,7 @@ provider "proxmox" {
     # "agent" true uses the local SSH agent, false reads
     # private_key. HCP has no agent, so false.
     agent       = false
-    username    = "terraform-bot"  # Not a human login.
+    username    = "terraform-bot" # Not a human login.
     private_key = local.terraform_bot_private_key
 
     node {

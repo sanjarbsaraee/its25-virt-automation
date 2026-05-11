@@ -10,8 +10,3 @@ output "vm_fleet_status" {
     }
   }
 }
-
-# Legacy convenience outputs (Optional, for quick CLI access)
-output "control_node_ip" {
-  value = split("/", proxmox_virtual_environment_vm.nodes["control-node"].initialization[0].ip_config[0].ipv4[0].address)[0]
-}

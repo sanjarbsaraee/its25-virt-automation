@@ -36,6 +36,7 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
       infisical_client_id     = var.infisical_client_id,
       infisical_client_secret = var.infisical_client_secret,
       infisical_project_id    = var.infisical_project_id,
+      infisical_environment   = var.infisical_environment,
       workspace_suffix        = local.env.name_suffix,
     })
     file_name = "ansible-bootstrap.yaml"
@@ -112,12 +113,13 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
   }
 
-  # Proxmox rewrites these fields on every plan, so without
-  # ignore_changes Terraform would re-apply them forever.
+  # Proxmox rewrites network and cpu fields on every plan.
+  # user_data_file_id is ignored so bootstrap edits don't rebuild VMs.
   lifecycle {
     ignore_changes = [
       network_device,
       initialization[0].user_account,
+      initialization[0].user_data_file_id,
       cpu[0].flags
     ]
   }

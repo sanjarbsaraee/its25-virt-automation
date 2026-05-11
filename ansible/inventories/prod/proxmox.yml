@@ -19,7 +19,7 @@ token_id: >-
             universal_auth_client_id=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_ID'),
             universal_auth_client_secret=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET'),
             project_id=lookup('env', 'INFISICAL_PROJECT_ID'),
-            env_slug='dev',
+            env_slug=lookup('env', 'INFISICAL_ENVIRONMENT'),
             path='/',
             secret_name='ANSIBLE_PROXMOX_TOKEN_ID').value }}
 token_secret: >-
@@ -27,7 +27,7 @@ token_secret: >-
             universal_auth_client_id=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_ID'),
             universal_auth_client_secret=lookup('env', 'INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET'),
             project_id=lookup('env', 'INFISICAL_PROJECT_ID'),
-            env_slug='dev',
+            env_slug=lookup('env', 'INFISICAL_ENVIRONMENT'),
             path='/',
             secret_name='ANSIBLE_PROXMOX_TOKEN_SECRET').value }}
 

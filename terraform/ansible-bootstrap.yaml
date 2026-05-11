@@ -45,6 +45,7 @@ write_files:
       INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=${infisical_client_id}
       INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=${infisical_client_secret}
       INFISICAL_PROJECT_ID=${infisical_project_id}
+      INFISICAL_ENVIRONMENT=${infisical_environment}
       WORKSPACE_SUFFIX=${workspace_suffix}
 
 # Cloud-init runs commands as root. "sudo -u automation"

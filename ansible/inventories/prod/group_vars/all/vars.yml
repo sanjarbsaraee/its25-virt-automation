@@ -11,12 +11,13 @@ db_user: app_rw
 
 # Read from /etc/environment, written by cloud-init.
 infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
+infisical_environment: "{{ lookup('env', 'INFISICAL_ENVIRONMENT') }}"
 
 # Fetched from Infisical at runtime. Never stored on disk.
 # The lookup returns an object with key and value —
 # .value extracts the password string.
 db_password: "{{ lookup('infisical.vault.read_secrets',
   project_id=infisical_project_id,
-  env_slug='dev',
+  env_slug=infisical_environment,
   path='/',
   secret_name='DB_PASSWORD').value }}"
