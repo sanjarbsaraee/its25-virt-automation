@@ -16,3 +16,8 @@ collections:
   # without manual edits.
   - name: community.proxmox
     version: "1.3.0"
+
+  - name: community.general
+
+  - name: devsec.hardening
+    version: "10.5.0"

@@ -8,6 +8,29 @@
   roles:
     - control_node_check
 
+- name: Harden SSH on all hosts
+  hosts: all
+  become: true
+  tags: ['ssh_hardening']
+  roles:
+    - role: devsec.hardening.ssh_hardening
+      vars:
+        # Keep port 22 — we use ProxyJump
+        ssh_server_ports: ['22']
+
+        # Only key auth, no root login
+        ssh_permit_root_login: "no"
+        ssh_password_authentication: false
+        ssh_challenge_response_authentication: false
+
+        # Keep PAM active for automation user sudo
+        ssh_use_pam: true
+
+        # Disable forwarding
+        ssh_allow_tcp_forwarding: "no"
+        ssh_allow_agent_forwarding: false
+        ssh_x11_forwarding: false
+
 - name: Common baseline on all hosts
   hosts: all
   become: true
