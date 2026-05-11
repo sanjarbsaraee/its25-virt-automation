@@ -40,6 +40,7 @@ variable "infisical_environment" {
 variable "infisical_client_id" {
   description = "Client ID for Infisical Universal Auth, passed to control-node for Ansible lookups."
   type        = string
+  sensitive   = true
 }
 
 variable "infisical_client_secret" {

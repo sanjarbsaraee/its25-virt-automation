@@ -1,7 +1,7 @@
 #cloud-config
 # Sets up the control-node at first boot. Installs Ansible,
-# clones the repo, writes a list of VM addresses. Without
-# this, every rebuild needs manual setup.
+# clones the repo, configures Infisical access. Without this,
+# every rebuild needs manual setup.
 
 hostname: ${hostname}
 fqdn: ${hostname}.local
@@ -21,33 +21,32 @@ users:
 package_update: true
 package_upgrade: true
 
+# pipx replaces apt's old Ansible 2.14. The Proxmox inventory
+# plugin needs 2.17+, which Debian 12 doesn't ship.
 packages:
-  - ansible
+  - pipx
   - git
   - python3-pip
 
-# Ansible needs VM names and IPs to know which machines
-# to configure. This block writes that list at first boot.
 write_files:
-  - path: /tmp/hosts.yml
-    owner: automation:automation
-    permissions: "0644"
-    content: |
-      ${indent(6, inventory_content)}
   - path: /home/automation/.ssh/id_ed25519
     owner: automation:automation
     permissions: "0600"
     content: |
       ${indent(6, automation_private_key)}
 
-  # Infisical credentials for Ansible lookups. Written to
-  # /etc/environment so all shells and processes can read them.
+  # Infisical credentials for runtime lookups. The Proxmox
+  # inventory plugin and db_password both read from here.
+  # WORKSPACE_SUFFIX tells the inventory which VMs are ours
+  # on a Proxmox host shared between teammates.
   - path: /etc/environment
     append: true
     content: |
       INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=${infisical_client_id}
       INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=${infisical_client_secret}
       INFISICAL_PROJECT_ID=${infisical_project_id}
+      INFISICAL_ENVIRONMENT=${infisical_environment}
+      WORKSPACE_SUFFIX=${workspace_suffix}
 
 # Cloud-init runs commands as root. "sudo -u automation"
 # makes automation own the files, not root.
@@ -56,22 +55,20 @@ runcmd:
     https://github.com/sanjarbsaraee/its25-virt-automation.git
     /home/automation/its25-virt-automation
 
-  # Replaces the default address list in the repo with
-  # actual VM IPs from Terraform.
-  - mv /tmp/hosts.yml
-    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
-  - chown automation:automation
-    /home/automation/its25-virt-automation/ansible/inventories/prod/hosts.yml
+  # pipx installs Ansible in an isolated venv. --include-deps
+  # also installs ansible-galaxy, ansible-playbook, etc.
+  - sudo -u automation pipx install --include-deps ansible
 
-  # -p puts packages in ./collections, where Ansible
-  # looks. Without it, packages land in ~/.ansible/.
-  - sudo -u automation ansible-galaxy collection install -p
+  # pipx venvs can't see system-wide pip packages. The Proxmox
+  # plugin needs requests; the Infisical lookup needs the SDK.
+  - sudo -u automation pipx inject ansible requests
+  - sudo -u automation pipx inject ansible infisicalsdk
+
+  # -p puts packages in ./collections, where Ansible looks.
+  # Without it, packages land in ~/.ansible/.
+  - sudo -u automation /home/automation/.local/bin/ansible-galaxy collection install -p
     /home/automation/its25-virt-automation/ansible/collections -r
     /home/automation/its25-virt-automation/ansible/collections/requirements.yml
-
-  # The infisical.vault Ansible collection needs this
-  # Python package to talk to the Infisical API.
-  - pip install infisicalsdk --break-system-packages
 
   # Ensure the automation user owns EVERYTHING in the
   # project folder to avoid permission errors.
