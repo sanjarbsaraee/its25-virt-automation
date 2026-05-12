@@ -1,18 +1,5 @@
 # Maps host groups to roles. Each play targets one group.
 
-# Install Galaxy collections before any other play runs.
-# Keeps the playbook self-contained, no manual setup needed.
-- name: Install required Ansible collections
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  tasks:
-    - name: Run ansible-galaxy collection install
-      ansible.builtin.command:
-        cmd: ansible-galaxy collection install -p ./collections -r collections/requirements.yml
-        chdir: "{{ playbook_dir }}/.."
-      changed_when: false
-
 # gather_facts collects OS, mounts and hostname before
 # tasks run. The role uses it for disk and identity checks.
 - name: Verify control-node readiness
@@ -24,12 +11,12 @@
 - name: Harden SSH on all hosts
   hosts: all
   become: true
-  tags: ['ssh_hardening']
+  tags: ["ssh_hardening"]
   roles:
     - role: devsec.hardening.ssh_hardening
       vars:
         # Keep port 22 — we use ProxyJump
-        ssh_server_ports: ['22']
+        ssh_server_ports: ["22"]
 
         # Only key auth, no root login
         ssh_permit_root_login: "no"

@@ -74,6 +74,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "flask_fr
   comment = "Flask port from lb-01"
 
   rule {
+    enabled = true
     type    = "in"
     action  = "ACCEPT"
     proto   = "tcp"
@@ -90,6 +91,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
   comment = "PostgreSQL from web tier"
 
   rule {
+    enabled = true
     type    = "in"
     action  = "ACCEPT"
     proto   = "tcp"
@@ -99,6 +101,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
   }
 
   rule {
+    enabled = true
     type    = "in"
     action  = "ACCEPT"
     proto   = "tcp"
