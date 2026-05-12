@@ -11,12 +11,14 @@ locals {
   env = lookup(local.env_config, terraform.workspace, local.env_config["its25-virt-automation"])
 
   # One entry per VM. Adding a machine means one line here.
+  # db-01 keeps 1024 MB so postgres shared_buffers stays at
+  # 25% of RAM. The rest drop to 512 MB to free host RAM.
   vm_fleet = {
-    "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 2048, disk_size = 20, desc = "Ansible Control Node" }
-    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 1" }
-    "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 2" }
+    "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 1024, disk_size = 20, desc = "Ansible Control Node" }
+    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 512, disk_size = 20, desc = "Flask Web Server 1" }
+    "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 512, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
-    "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
+    "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 512, disk_size = 20, desc = "Nginx Load Balancer" }
   }
 }
 
@@ -67,9 +69,13 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   description = each.value.desc
 
   agent { enabled = true }
+
+  # Linked clone shares the template's disk and stores only
+  # the differences. Takes seconds, not minutes per VM.
+  # The template at vm_id 9001 must stay alive while VMs exist.
   clone {
     vm_id = var.template_vm_id
-    full  = true
+    full  = false
   }
 
   cpu { cores = each.value.cores }
