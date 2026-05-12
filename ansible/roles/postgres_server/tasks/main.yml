@@ -23,6 +23,7 @@
     name:
       - "postgresql-{{ pg_version }}"
       - "postgresql-contrib-{{ pg_version }}"
+      - "postgresql-{{ pg_version }}-pgaudit"
       - python3-psycopg2
       - acl
       - ufw

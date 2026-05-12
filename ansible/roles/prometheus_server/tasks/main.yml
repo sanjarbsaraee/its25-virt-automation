@@ -1,0 +1,52 @@
+---
+- name: Install and configure Prometheus
+  include_role:
+    name: prometheus.prometheus.prometheus
+  vars:
+    prometheus_scrape_configs:
+      - job_name: "nodes"
+        static_configs:
+          - targets:
+              - "192.168.50.210:9100"
+              - "192.168.50.220:9100"
+              - "192.168.50.221:9100"
+              - "192.168.50.230:9100"
+              - "192.168.50.240:9100"
+              - "192.168.50.250:9100"
+
+- name: Install Grafana gpg key
+  ansible.builtin.apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana repository
+  ansible.builtin.apt_repository:
+    repo: deb https://apt.grafana.com stable main
+    state: present
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+
+- name: Configure Grafana root_url
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: "^;root_url ="
+    line: "root_url = http://192.168.50.240/grafana"
+  notify: Restart grafana
+
+- name: Ensure Grafana is started and enabled
+  ansible.builtin.systemd:
+    name: grafana-server
+    state: started
+    enabled: true
+
+- name: Allow Grafana from lb-01 (UFW)
+  community.general.ufw:
+    rule: allow
+    port: "3000"
+    proto: tcp
+    src: "192.168.50.240"
+  become: true

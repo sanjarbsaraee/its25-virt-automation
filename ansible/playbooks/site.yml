@@ -26,8 +26,8 @@
         # Keep PAM active for automation user sudo
         ssh_use_pam: true
 
-        # Disable forwarding
-        ssh_allow_tcp_forwarding: "no"
+        # Allow forwarding for management access
+        ssh_allow_tcp_forwarding: "yes"
         ssh_allow_agent_forwarding: false
         ssh_x11_forwarding: false
 
@@ -36,6 +36,18 @@
   become: true
   roles:
     - common
+    - role: prometheus.prometheus.node_exporter
+
+- name: Allow Node Exporter scraping
+  hosts: all
+  become: true
+  tasks:
+    - name: Allow 9100 from monitor
+      community.general.ufw:
+        rule: allow
+        port: "9100"
+        proto: tcp
+        src: "192.168.50.250"
 
 - name: Configure database server
   hosts: db
@@ -54,3 +66,9 @@
   become: true
   roles:
     - nginx_lb
+
+- name: Configure monitoring server
+  hosts: monitor
+  become: true
+  roles:
+    - prometheus_server

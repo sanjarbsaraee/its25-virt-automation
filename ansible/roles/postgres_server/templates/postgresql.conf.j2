@@ -31,3 +31,8 @@ log_connections = on
 log_disconnections = on
 log_line_prefix = '%m [%p] %u@%d from %h '
 log_statement = 'ddl'
+
+# pgAudit configuration
+shared_preload_libraries = 'pgaudit'
+pgaudit.log = 'ddl, write'
+pgaudit.log_catalog = off

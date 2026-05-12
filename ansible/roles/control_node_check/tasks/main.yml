@@ -16,7 +16,7 @@
 # "register" saves output for later tasks. Name avoids
 # shadowing the built-in "ansible_version" fact.
 - name: Capture Ansible version
-  ansible.builtin.command: ansible --version
+  ansible.builtin.command: /home/automation/.local/bin/ansible --version
   changed_when: false
   check_mode: false
   register: ansible_cli

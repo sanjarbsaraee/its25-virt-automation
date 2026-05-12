@@ -111,6 +111,38 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
   }
 }
 
+# Allows Prometheus on monitor-01 to scrape metrics.
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "node_exporter" {
+  name    = "node-exporter"
+  comment = "Node Exporter from monitor-01"
+
+  rule {
+    enabled = true
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "9100"
+    source  = "${var.lan_subnet}.${local.env.ip_base + 50}/32"
+    comment = "Node Exporter from monitor-01"
+  }
+}
+
+# Only the load balancer should reach Grafana.
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "grafana_from_lb" {
+  name    = "grafana-from-lb"
+  comment = "Grafana port from lb-01"
+
+  rule {
+    enabled = true
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3000"
+    source  = "${var.lan_subnet}.${local.env.ip_base + 40}/32"
+    comment = "Grafana from lb-01"
+  }
+}
+
 # --- Per-VM rule bindings ---
 # One firewall_rules resource per VM. The bpg provider
 # does not allow more (issue #1492).
@@ -126,6 +158,12 @@ resource "proxmox_virtual_environment_firewall_rules" "vm_rules" {
   rule {
     security_group = proxmox_virtual_environment_cluster_firewall_security_group.ssh_from_mgmt.name
     comment        = "SSH baseline"
+  }
+
+  # All VMs allow scraping from monitor-01.
+  rule {
+    security_group = proxmox_virtual_environment_cluster_firewall_security_group.node_exporter.name
+    comment        = "Node Exporter scraping"
   }
 
   dynamic "rule" {
@@ -149,6 +187,14 @@ resource "proxmox_virtual_environment_firewall_rules" "vm_rules" {
     content {
       security_group = proxmox_virtual_environment_cluster_firewall_security_group.pg_from_web.name
       comment        = "PostgreSQL from web"
+    }
+  }
+
+  dynamic "rule" {
+    for_each = each.value.role == "monitor" ? [1] : []
+    content {
+      security_group = proxmox_virtual_environment_cluster_firewall_security_group.grafana_from_lb.name
+      comment        = "Grafana from lb-01"
     }
   }
 }

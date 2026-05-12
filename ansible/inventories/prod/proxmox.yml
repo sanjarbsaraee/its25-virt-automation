@@ -54,6 +54,7 @@ groups:
   web:     "proxmox_name.startswith('web-')"
   db:      "proxmox_name.startswith('db-')"
   lb:      "proxmox_name.startswith('lb-')"
+  monitor: "proxmox_name.startswith('monitor-')"
 
 # proxmox_ipconfig0 looks like 'ip=192.168.50.140/24,...'.
 # regex_replace strips '/24' so ansible_host gets a clean IP.

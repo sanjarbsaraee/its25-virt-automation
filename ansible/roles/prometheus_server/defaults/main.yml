@@ -1,0 +1,9 @@
+prometheus_scrape_interval: "15s"
+prometheus_port: 9090
+prometheus_retention: "1y"
+
+grafana_port: 3000
+
+postgres_exporter_port: 9187
+
+alertmanager_port: 9093
