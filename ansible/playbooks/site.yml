@@ -11,12 +11,12 @@
 - name: Harden SSH on all hosts
   hosts: all
   become: true
-  tags: ['ssh_hardening']
+  tags: ["ssh_hardening"]
   roles:
     - role: devsec.hardening.ssh_hardening
       vars:
         # Keep port 22 — we use ProxyJump
-        ssh_server_ports: ['22']
+        ssh_server_ports: ["22"]
 
         # Only key auth, no root login
         ssh_permit_root_login: "no"
