@@ -10,18 +10,20 @@ locals {
 
   env = lookup(local.env_config, terraform.workspace, local.env_config["its25-virt-automation"])
 
-  # One entry per VM. Adding a new machine means one line here.
+  # One entry per VM. Adding a machine means one line here.
+  # db-01 keeps 1024 MB so postgres shared_buffers stays at
+  # 25% of RAM. The rest drop to 512 MB to free host RAM.
   vm_fleet = {
     "control-node" = { role = "control", ip_offset = 10, cores = 2, memory = 2048, disk_size = 20, desc = "Ansible Control Node" }
-    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 1" }
-    "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 1024, disk_size = 20, desc = "Flask Web Server 2" }
+    "web-01"       = { role = "web", ip_offset = 20, cores = 2, memory = 512, disk_size = 20, desc = "Flask Web Server 1" }
+    "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 512, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
-    "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 1024, disk_size = 20, desc = "Nginx Load Balancer" }
+    "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 512, disk_size = 20, desc = "Nginx Load Balancer" }
   }
 }
 
-# The control-node's first-boot setup. Lives on the host
-# so rebuilding the VM doesn't need a fresh upload from a laptop.
+# First-boot setup for the control-node. Lives on the host
+# so a rebuild does not need a fresh upload from a laptop.
 resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   content_type = "snippets"
   datastore_id = "local"
@@ -43,8 +45,8 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
   }
 }
 
-# Without this, every cloned VM would get the template's
-# hostname instead of its own (web-01, db-01, etc.).
+# Gives each cloned VM its own hostname (web-01, db-01...).
+# Without this they would all inherit the template's name.
 resource "proxmox_virtual_environment_file" "vm_metadata" {
   for_each     = local.vm_fleet
   content_type = "snippets"
@@ -67,9 +69,13 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   description = each.value.desc
 
   agent { enabled = true }
+
+  # Linked clone shares the template's disk and stores only
+  # the differences. Takes seconds, not minutes per VM.
+  # The template at vm_id 9001 must stay alive while VMs exist.
   clone {
     vm_id = var.template_vm_id
-    full  = true
+    full  = false
   }
 
   cpu { cores = each.value.cores }
@@ -82,15 +88,16 @@ resource "proxmox_virtual_environment_vm" "nodes" {
   }
 
   network_device {
-    bridge = var.lan_bridge
-    model  = "virtio"
+    bridge   = var.lan_bridge
+    model    = "virtio"
+    firewall = true
   }
 
   initialization {
     datastore_id = "local-lvm"
 
     # Only the control-node runs the bootstrap script. The
-    # others just need their own hostname, not the full setup.
+    # others need a hostname, not the full setup.
     user_data_file_id = each.value.role == "control" ? proxmox_virtual_environment_file.ansible_bootstrap.id : null
     meta_data_file_id = each.value.role != "control" ? proxmox_virtual_environment_file.vm_metadata[each.key].id : null
 
@@ -102,7 +109,7 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
 
     # Tailscale on the host hijacks DNS with 100.100.100.100.
-    # Public DNS servers bypass that so cloud-init reaches the internet.
+    # Public servers bypass that so cloud-init reaches apt.
     dns {
       servers = ["1.1.1.1", "8.8.8.8"]
     }
@@ -113,13 +120,13 @@ resource "proxmox_virtual_environment_vm" "nodes" {
     }
   }
 
-  # Proxmox rewrites these fields on every plan, so without
-  # ignore_changes Terraform would re-apply them forever.
+  # Proxmox rewrites these fields after VM creation. Without
+  # ignoring them, terraform plan shows false drift every run.
   lifecycle {
     ignore_changes = [
-      network_device,
       initialization[0].user_account,
-      cpu[0].flags
+      initialization[0].dns,
+      cpu[0].flags,
     ]
   }
 }

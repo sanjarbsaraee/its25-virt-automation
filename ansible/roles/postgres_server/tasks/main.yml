@@ -1,6 +1,6 @@
-# PostgreSQL accepts connections only from web tier and
-# requires TLS. Without these restrictions, any host on
-# the network can read the database.
+# Without these restrictions, any host on the network can
+# read the database. With them, only the web servers reach
+# it and the connection is encrypted.
 
 - name: DB | Add PGDG signing key
   ansible.builtin.get_url:
@@ -9,8 +9,8 @@
     mode: "0644"
   become: true
 
-# PGDG is PostgreSQL's own package repo. Debian 12 ships
-# version 15 by default — PGDG gives us version 16.
+# Debian 12 ships PostgreSQL 15. PGDG is PostgreSQL's
+# own package source, which gives us version 16.
 - name: DB | Add PGDG repository
   ansible.builtin.apt_repository:
     repo: "deb https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main"
@@ -30,8 +30,9 @@
     update_cache: true
   become: true
 
-# Self-signed cert for TLS between web and db.
-# "creates" skips this if the cert already exists.
+# A self-signed cert is enough for an internal database
+# that only the web servers talk to. "creates" skips the
+# step if the cert already exists.
 - name: DB | Generate self-signed TLS cert
   ansible.builtin.command:
     cmd: >-
@@ -43,6 +44,8 @@
   become: true
   notify: restart postgresql
 
+# The private key must stay unreadable to anyone but
+# postgres. Cert is public, so 0644 is fine.
 - name: DB | Set cert permissions
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -81,8 +84,8 @@
     enabled: true
   become: true
 
-# become_user: postgres — only the postgres system user
-# can create databases and users in PostgreSQL.
+# Only the postgres system user can create databases.
+# become_user switches to that user for the next step.
 - name: DB | Create application database
   community.postgresql.postgresql_db:
     name: "{{ pg_app_db }}"
@@ -91,6 +94,8 @@
   become: true
   become_user: postgres
 
+# no_log hides the password from Ansible's output, which
+# would otherwise be visible in logs and CI runs.
 - name: DB | Create app user
   community.postgresql.postgresql_user:
     name: "{{ pg_app_user }}"
@@ -99,12 +104,11 @@
     role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB
   become: true
   become_user: postgres
-  # no_log hides the password from Ansible output.
   no_log: true
 
 # --- Firewall ---
-# Only web tier reaches port 5432. SSH stays open so
-# Ansible can still manage the node.
+# The common role handles SSH for every VM. This file
+# only adds the database-specific rule.
 
 - name: DB | Allow Postgres from web
   community.general.ufw:
@@ -113,13 +117,6 @@
     proto: tcp
     src: "{{ item }}"
   loop: "{{ pg_allowed_clients | map('regex_replace', '/32$', '') | list }}"
-  become: true
-
-- name: DB | Allow SSH
-  community.general.ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
   become: true
 
 - name: DB | Enable UFW
