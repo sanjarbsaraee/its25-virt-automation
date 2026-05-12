@@ -57,12 +57,3 @@
     proto: tcp
     comment: "Public HTTP"
   become: true
-
-- name: UFW | Allow HTTP from Tailscale
-  community.general.ufw:
-    rule: allow
-    port: "80"
-    proto: tcp
-    src: "100.64.0.0/10"
-    comment: "Tailscale HTTP"
-  become: true

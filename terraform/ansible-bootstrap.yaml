@@ -64,6 +64,10 @@ runcmd:
   - sudo -u automation pipx inject ansible requests
   - sudo -u automation pipx inject ansible infisicalsdk
 
+  # Adds ~/.local/bin to PATH so pipx binaries work in new
+  # login shells without manual sourcing.
+  - sudo -H -u automation pipx ensurepath
+
   # -p puts packages in ./collections, where Ansible looks.
   # Without it, packages land in ~/.ansible/.
   - sudo -u automation /home/automation/.local/bin/ansible-galaxy collection install -p

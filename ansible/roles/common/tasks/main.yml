@@ -1,11 +1,12 @@
-# Packages here are prerequisites for flask_app and
-# postgres_server. Without them, later roles fail.
+# Baseline packages and firewall rules for every VM.
+# Later roles like flask_app and postgres_server depend
+# on this running first.
 
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
-    # Skips update if cache is younger than this value
-    # (seconds). Defined in group_vars/all.yml.
+    # Skips the update if the cache is fresh enough.
+    # Value in seconds, set in group_vars/all.yml.
     cache_valid_time: "{{ apt_cache_valid_time }}"
   become: true
 
@@ -34,6 +35,8 @@
     state: present
   become: true
 
+# Order matters. Default deny, then SSH, then enable.
+# Enabling before SSH is allowed locks out the playbook.
 - name: UFW | Set default incoming policy to deny
   community.general.ufw:
     direction: incoming
@@ -46,25 +49,37 @@
     default: allow
   become: true
 
-- name: UFW | Allow SSH from management subnet
+# Drops new SSH attempts after six tries in thirty
+# seconds from the same sender. Stops brute force.
+- name: UFW | Allow and rate-limit SSH from management
   community.general.ufw:
-    rule: allow
+    rule: limit
     port: "22"
     proto: tcp
     src: "{{ lan_subnet }}.0/24"
-    comment: "SSH from management"
+    comment: "SSH from management with rate-limit"
   become: true
 
-- name: UFW | Allow SSH from Tailscale subnet
+# Without this, Tailscale logins time out silently.
+# UFW drops them, Proxmox lets them through.
+- name: UFW | Allow and rate-limit SSH from Tailscale
   community.general.ufw:
-    rule: allow
+    rule: limit
     port: "22"
     proto: tcp
     src: "100.64.0.0/10"
-    comment: "Tailscale remote SSH"
+    comment: "SSH from Tailscale CGNAT with rate-limit"
   become: true
 
+# Enable flushes conntrack and kills Ansible's SSH.
+# async + poll 0 means start it and move on, don't wait.
 - name: UFW | Enable UFW
   community.general.ufw:
     state: enabled
   become: true
+  async: 30
+  poll: 0
+
+# Clears cached SSH sessions so the next task builds new ones.
+- name: UFW | Reset SSH after firewall enable
+  ansible.builtin.meta: reset_connection

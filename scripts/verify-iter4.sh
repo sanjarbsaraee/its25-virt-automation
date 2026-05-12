@@ -1,45 +1,127 @@
-#!/usr/bin/env bash
-# verify-iter4.sh
-# Tests defense-in-depth: Proxmox Firewall and UFW rules.
-
+#!/bin/bash
+# Proves iter 4 firewall and SSH hardening work end-to-end.
+# Without this, the only way to verify is manual SSH and
+# guesswork, since firewall rules are invisible in the UI.
+#
+# Usage:   ./scripts/verify-iter4.sh <ctrl> <web1> <web2> <db> <lb>
+# Example: ./scripts/verify-iter4.sh 192.168.50.110 192.168.50.120 \
+#            192.168.50.121 192.168.50.130 192.168.50.140
+ 
+set -u
+ 
+CONTROL_IP="${1:?Usage: $0 <ctrl> <web1> <web2> <db> <lb>}"
+WEB1_IP="${2:?Usage: $0 <ctrl> <web1> <web2> <db> <lb>}"
+WEB2_IP="${3:?Usage: $0 <ctrl> <web1> <web2> <db> <lb>}"
+DB_IP="${4:?Usage: $0 <ctrl> <web1> <web2> <db> <lb>}"
+LB_IP="${5:?Usage: $0 <ctrl> <web1> <web2> <db> <lb>}"
+USER="automation"
+ 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
-
-echo -e "Starting Iteration 4 Verification: Network Hardening\n"
-
-echo "1. Checking Public Access (Port 80 on LB)"
-if curl -s -m 2 http://192.168.50.240 > /dev/null; then
-    echo -e "${GREEN}PASS:${NC} Load balancer port 80 is reachable"
+ 
+PASS=0
+FAIL=0
+ 
+run_ssh() {
+    local host=$1
+    local cmd=$2
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        "$USER@$host" "$cmd" 2>/dev/null
+}
+ 
+# Passes if the output matches the expected pattern.
+check() {
+    local description=$1
+    local result=$2
+    local expected=$3
+    if echo "$result" | grep -qE "$expected"; then
+        printf " ${GREEN}✓${NC} %s\n" "$description"
+        PASS=$((PASS + 1))
+    else
+        printf " ${RED}✗${NC} %s\n" "$description"
+        printf "   Expected: %s\n" "$expected"
+        printf "   Got:      %s\n" "$result"
+        FAIL=$((FAIL + 1))
+    fi
+}
+ 
+# Passes if the output does NOT match the pattern. Used
+# for blocked traffic, where a match means the firewall
+# failed to drop it.
+check_negative() {
+    local description=$1
+    local result=$2
+    local forbidden=$3
+    if echo "$result" | grep -qE "$forbidden"; then
+        printf " ${RED}✗${NC} %s\n" "$description"
+        printf "   Should NOT match: %s\n" "$forbidden"
+        printf "   Got:              %s\n" "$result"
+        FAIL=$((FAIL + 1))
+    else
+        printf " ${GREEN}✓${NC} %s\n" "$description"
+        PASS=$((PASS + 1))
+    fi
+}
+ 
+printf "${CYAN}==========================================${NC}\n"
+printf " Iter 4 Verification\n"
+printf " Control: ${YELLOW}%s${NC}  Web1: ${YELLOW}%s${NC}\n" "$CONTROL_IP" "$WEB1_IP"
+printf " Web2: ${YELLOW}%s${NC}  DB: ${YELLOW}%s${NC}  LB: ${YELLOW}%s${NC}\n" "$WEB2_IP" "$DB_IP" "$LB_IP"
+printf "${CYAN}==========================================${NC}\n"
+ 
+# --- UFW status on every VM ---
+printf "\n${CYAN}--- UFW status ---${NC}\n"
+for ip in "$CONTROL_IP" "$WEB1_IP" "$WEB2_IP" "$DB_IP" "$LB_IP"; do
+    check "UFW active on $ip" \
+        "$(run_ssh "$ip" 'sudo ufw status verbose')" \
+        "Status: active"
+    check "UFW default deny incoming on $ip" \
+        "$(run_ssh "$ip" 'sudo ufw status verbose')" \
+        "deny.*incoming"
+done
+ 
+# --- SSH hardening on every VM ---
+# sshd -T prints the running config. If the role failed
+# silently, these checks catch it.
+printf "\n${CYAN}--- SSH hardening ---${NC}\n"
+for ip in "$CONTROL_IP" "$WEB1_IP" "$WEB2_IP" "$DB_IP" "$LB_IP"; do
+    check "Root login disabled on $ip" \
+        "$(run_ssh "$ip" 'sudo sshd -T | grep ^permitrootlogin')" \
+        "no"
+    check "Password auth disabled on $ip" \
+        "$(run_ssh "$ip" 'sudo sshd -T | grep ^passwordauthentication')" \
+        "no"
+done
+ 
+# --- Allowed traffic actually works ---
+printf "\n${CYAN}--- Allowed traffic ---${NC}\n"
+check "lb-01 reaches Flask on web-01:8080" \
+    "$(run_ssh "$LB_IP" "nc -zv -w 2 $WEB1_IP 8080 2>&1")" \
+    "succeeded|open"
+check "web-01 reaches Postgres on db-01:5432" \
+    "$(run_ssh "$WEB1_IP" "nc -zv -w 2 $DB_IP 5432 2>&1")" \
+    "succeeded|open"
+ 
+# --- Blocked traffic actually fails ---
+# If these pass, the firewall is not blocking what it
+# should. That is a security regression.
+printf "\n${CYAN}--- Blocked traffic ---${NC}\n"
+check_negative "db-01 cannot reach Flask on web-01:8080" \
+    "$(run_ssh "$DB_IP" "nc -zv -w 2 $WEB1_IP 8080 2>&1")" \
+    "succeeded|open"
+check_negative "lb-01 cannot reach Postgres on db-01:5432" \
+    "$(run_ssh "$LB_IP" "nc -zv -w 2 $DB_IP 5432 2>&1")" \
+    "succeeded|open"
+ 
+printf "\n${CYAN}==========================================${NC}\n"
+if [ $FAIL -eq 0 ]; then
+    printf "${GREEN}PASSED:${NC} %d checks\n" "$PASS"
 else
-    echo -e "${RED}FAIL:${NC} Load balancer port 80 is NOT reachable"
+    printf "${RED}FAILED:${NC} %d checks (%d passed)\n" "$FAIL" "$PASS"
 fi
-
-echo -e "\n2. Checking Internal Web App Ports (Port 8080 on Web Servers)"
-if curl -s -m 2 http://192.168.50.220:8080 > /dev/null; then
-   echo -e "${RED}FAIL:${NC} Web-01 port 8080 was reached! Firewall is open."
-else
-   echo -e "${GREEN}PASS:${NC} Web-01 port 8080 is correctly blocked"
-fi
-
-if curl -s -m 2 http://192.168.50.221:8080 > /dev/null; then
-   echo -e "${RED}FAIL:${NC} Web-02 port 8080 was reached! Firewall is open."
-else
-   echo -e "${GREEN}PASS:${NC} Web-02 port 8080 is correctly blocked"
-fi
-
-echo -e "\n3. Checking Internal Database Port (Port 5432 on DB Server)"
-if nc -z -w 2 192.168.50.230 5432 > /dev/null 2>&1; then
-   echo -e "${RED}FAIL:${NC} DB-01 port 5432 was reached! Firewall is open."
-else
-   echo -e "${GREEN}PASS:${NC} DB-01 port 5432 is correctly blocked"
-fi
-
-echo -e "\n4. Checking UFW status on nodes (via Ansible)"
-if ansible all -m shell -a "ufw status | grep -q 'Status: active'" -b > /dev/null 2>&1; then
-    echo -e "${GREEN}PASS:${NC} UFW is active on all nodes"
-else
-    echo -e "${RED}FAIL:${NC} UFW is not active on all nodes"
-fi
-
-echo -e "\n${GREEN}All network hardening checks passed!${NC}"
+printf "${CYAN}==========================================${NC}\n"
+ 
+exit "$FAIL"

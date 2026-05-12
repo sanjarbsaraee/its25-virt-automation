@@ -3,6 +3,10 @@
 apt_cache_valid_time: 3600
 lan_subnet: "192.168.50"
 
+# LAN subnet prefix used by UFW rules in the common role.
+# Mirrors the same-named Terraform variable, keep in sync.
+lan_subnet: "192.168.50"
+
 # Flask needs to know where the database lives. Pulled
 # from inventory so the value follows each workspace.
 db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
