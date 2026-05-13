@@ -1,13 +1,21 @@
 #!/bin/bash
-# Smoke test for iter 5 — monitoring stack, pgaudit, exporter, firewall.
-# Run on control-node after ansible-playbook completes.
+# Smoke test for iter 5 — monitoring stack, pgaudit, exporter.
+# Runs from a laptop over SSH, same pattern as verify-iter1..4.
 #
-# Usage: bash tests/verify-iter5.sh
+# Usage: bash scripts/verify-iter5.sh <ctrl> <web1> <web2> <db> <lb> <monitor>
+# Example:
+#   bash scripts/verify-iter5.sh 192.168.50.110 192.168.50.120 \
+#        192.168.50.121 192.168.50.130 192.168.50.140 192.168.50.150
 
-set -uo pipefail
+set -u
 
-# Run from the ansible directory so inventory paths resolve.
-cd "$(dirname "$0")/../ansible" || { echo "cannot find ansible/ directory"; exit 1; }
+CTRL="${1:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+WEB1="${2:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+WEB2="${3:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+DB="${4:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+LB="${5:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+MONITOR="${6:?Usage: $0 <ctrl> <web1> <web2> <db> <lb> <monitor>}"
+USER="automation"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -17,103 +25,134 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-# Helper that runs an ansible shell command against a group and prints
-# PASS/FAIL based on the exit code. Hides the noise, shows the result.
-run() {
-  local name="$1"
-  local target="$2"
-  local cmd="$3"
-  local hint="${4:-}"
-  if ansible -i inventories/prod/proxmox.yml "$target" \
-       -m shell -a "$cmd" --one-line > /tmp/verify-iter5.log 2>&1; then
-    echo -e "${GREEN}[PASS]${NC} $name"
-    PASS=$((PASS+1))
+# Wrapper that runs a remote command and hides ssh noise.
+# Used by check() to test the exit code or grep the output.
+run_ssh() {
+  local host=$1
+  local cmd=$2
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+      "$USER@$host" "$cmd" 2>/dev/null
+}
+
+# Helper that records PASS/FAIL based on whether the remote
+# command matches the expected regex. Hint shown on failure.
+check() {
+  local name=$1
+  local result=$2
+  local expected=$3
+  local hint=${4:-}
+  if echo "$result" | grep -qE "$expected"; then
+    printf " ${GREEN}[PASS]${NC} %s\n" "$name"
+    PASS=$((PASS + 1))
   else
-    echo -e "${RED}[FAIL]${NC} $name"
-    [ -n "$hint" ] && echo "        hint: $hint"
-    FAIL=$((FAIL+1))
+    printf " ${RED}[FAIL]${NC} %s\n" "$name"
+    [ -n "$hint" ] && printf "         hint: %s\n" "$hint"
+    FAIL=$((FAIL + 1))
   fi
 }
 
 heading() {
-  echo ""
-  echo -e "${YELLOW}=== $1 ===${NC}"
+  printf "\n${YELLOW}=== %s ===${NC}\n" "$1"
 }
 
-# Each section groups related checks. If one section fails entirely,
-# the cause is usually in the same role or playbook.
+printf "${YELLOW}====================================${NC}\n"
+printf " Iter 5 verification\n"
+printf " control=%s  web1=%s  web2=%s\n" "$CTRL" "$WEB1" "$WEB2"
+printf " db=%s  lb=%s  monitor=%s\n" "$DB" "$LB" "$MONITOR"
+printf "${YELLOW}====================================${NC}\n"
 
+# UFW must be enabled on every VM. Without it the in-VM
+# defense layer is missing and only Proxmox firewall protects.
 heading "UFW status on every VM"
-# UFW must be enabled for the in-VM defense layer to work. The
-# Proxmox firewall in front protects, but UFW is the second wall.
-for host in control web db lb monitor; do
-  run "UFW active on $host" "$host" \
-      "sudo ufw status | grep -q 'Status: active'" \
-      "ssh in and run: sudo ufw status verbose"
+for pair in "control:$CTRL" "web-01:$WEB1" "web-02:$WEB2" "db-01:$DB" "lb-01:$LB" "monitor-01:$MONITOR"; do
+  name="${pair%%:*}"
+  ip="${pair##*:}"
+  check "UFW active on $name" \
+        "$(run_ssh "$ip" 'sudo ufw status')" \
+        "Status: active" \
+        "ssh in and run: sudo ufw status verbose"
 done
 
+# Four services must run on monitor-01 for the stack to work.
+# systemctl is-active returns the literal word 'active' on success.
 heading "Monitoring services on monitor-01"
-run "prometheus is active" monitor \
-    "systemctl is-active prometheus" \
-    "ssh to monitor-01 and run: journalctl -u prometheus -n 50"
-run "alertmanager is active" monitor \
-    "systemctl is-active prometheus-alertmanager"
-run "postgres_exporter is active" monitor \
-    "systemctl is-active prometheus-postgres-exporter" \
-    "check the DSN at /etc/default/prometheus-postgres-exporter"
-run "grafana-server is active" monitor \
-    "systemctl is-active grafana-server"
-
-# Port-listening tells us the service bound correctly even if
-# systemctl says active. Catches port-config mistakes.
-run "prometheus listens on 9090" monitor "ss -tuln | grep -q ':9090'"
-run "grafana listens on 3000" monitor "ss -tuln | grep -q ':3000'"
-run "postgres_exporter listens on 9187" monitor "ss -tuln | grep -q ':9187'"
-
-heading "Prometheus endpoints on monitor-01"
-run "prometheus health endpoint" monitor \
-    "curl -sf http://localhost:9090/-/healthy"
-run "HighCpuUsage rule loaded" monitor \
-    "curl -sf http://localhost:9090/api/v1/rules | grep -q HighCpuUsage" \
-    "alert_rules.yml deployed but not picked up — check syntax"
-run "postgres_exporter publishes metrics" monitor \
-    "curl -sf http://localhost:9187/metrics | grep -q 'pg_up '" \
-    "exporter cannot reach db-01 or auth failed"
-
-heading "node_exporter on every VM"
-for host in control web db lb monitor; do
-  run "node_exporter on $host" "$host" \
-      "curl -sf http://localhost:9100/metrics | head -1 | grep -q '^# HELP'"
+for svc in prometheus prometheus-alertmanager prometheus-postgres-exporter grafana-server; do
+  check "$svc is active" \
+        "$(run_ssh "$MONITOR" "systemctl is-active $svc")" \
+        "^active$" \
+        "ssh to monitor-01 and run: journalctl -u $svc -n 50"
 done
 
-heading "Grafana via lb-01 (full path)"
-# Curls from lb-01 to its own localhost. Tests that nginx
-# proxies /grafana to monitor-01:3000 and Grafana answers.
-run "lb-01 proxies /grafana to monitor-01" lb \
-    "curl -sf http://localhost/grafana/api/health | grep -q 'database'" \
-    "nginx config issue or Grafana not running"
+# ss -tuln lists listening sockets. systemctl might say active
+# while the service silently binds to the wrong port.
+check "prometheus listens on 9090" \
+      "$(run_ssh "$MONITOR" 'ss -tuln')" ':9090'
+check "grafana listens on 3000" \
+      "$(run_ssh "$MONITOR" 'ss -tuln')" ':3000'
+check "postgres_exporter listens on 9187" \
+      "$(run_ssh "$MONITOR" 'ss -tuln')" ':9187'
 
+# Prometheus exposes a health endpoint, the loaded rules list,
+# and the postgres exporter's pg_up metric. Each tests a layer.
+heading "Prometheus endpoints on monitor-01"
+check "prometheus health endpoint" \
+      "$(run_ssh "$MONITOR" 'curl -sf http://localhost:9090/-/healthy')" \
+      'Healthy'
+check "HighCpuUsage rule loaded" \
+      "$(run_ssh "$MONITOR" 'curl -sf http://localhost:9090/api/v1/rules')" \
+      'HighCpuUsage' \
+      "alert_rules.yml deployed but Prometheus did not reload — restart it"
+check "postgres_exporter publishes metrics" \
+      "$(run_ssh "$MONITOR" 'curl -sf http://localhost:9187/metrics')" \
+      'pg_up ' \
+      "exporter cannot reach db-01 or auth failed"
+
+# Every VM runs node_exporter on :9100. The metrics endpoint
+# starts with a HELP comment line if the exporter is healthy.
+heading "node_exporter on every VM"
+for pair in "control:$CTRL" "web-01:$WEB1" "web-02:$WEB2" "db-01:$DB" "lb-01:$LB" "monitor-01:$MONITOR"; do
+  name="${pair%%:*}"
+  ip="${pair##*:}"
+  check "node_exporter on $name" \
+        "$(run_ssh "$ip" 'curl -sf http://localhost:9100/metrics | head -1')" \
+        '^# HELP'
+done
+
+# End-to-end test: lb-01 proxies /grafana to monitor-01:3000.
+# Grafana's /api/health returns JSON containing 'database'.
+heading "Grafana via lb-01 (full proxy path)"
+check "lb-01 proxies /grafana to monitor-01" \
+      "$(run_ssh "$LB" 'curl -sf http://localhost/grafana/api/health')" \
+      'database' \
+      "nginx /grafana location block or Grafana not running"
+
+# pgaudit and pg_stat_statements must be in shared_preload AND
+# created as extensions in the app database. Both checks needed.
 heading "pgaudit and pg_stat_statements on db-01"
-run "pgaudit in shared_preload_libraries" db \
-    "sudo grep -E 'shared_preload_libraries.*pgaudit' /etc/postgresql/16/main/postgresql.conf"
-run "pg_stat_statements in shared_preload_libraries" db \
-    "sudo grep -E 'shared_preload_libraries.*pg_stat_statements' /etc/postgresql/16/main/postgresql.conf"
-run "pgaudit extension active in app db" db \
-    "sudo -u postgres psql -d app -tAc \"SELECT 1 FROM pg_extension WHERE extname='pgaudit'\" | grep -q 1" \
-    "CREATE EXTENSION pgaudit failed — check postgres restart timing"
-run "pg_stat_statements extension active" db \
-    "sudo -u postgres psql -d app -tAc \"SELECT 1 FROM pg_extension WHERE extname='pg_stat_statements'\" | grep -q 1"
-run "exporter user exists with pg_monitor role" db \
-    "sudo -u postgres psql -tAc \"SELECT 1 FROM pg_auth_members JOIN pg_roles m ON m.oid=roleid JOIN pg_roles e ON e.oid=member WHERE m.rolname='pg_monitor' AND e.rolname='exporter'\" | grep -q 1"
+check "pgaudit in shared_preload_libraries" \
+      "$(run_ssh "$DB" 'sudo grep -E "^shared_preload_libraries" /etc/postgresql/16/main/postgresql.conf')" \
+      'pgaudit'
+check "pg_stat_statements in shared_preload_libraries" \
+      "$(run_ssh "$DB" 'sudo grep -E "^shared_preload_libraries" /etc/postgresql/16/main/postgresql.conf')" \
+      'pg_stat_statements'
+check "pgaudit extension active in app db" \
+      "$(run_ssh "$DB" "sudo -u postgres psql -d app -tAc \"SELECT 1 FROM pg_extension WHERE extname='pgaudit'\"")" \
+      '^1$' \
+      "CREATE EXTENSION pgaudit failed — check postgres restart timing"
+check "pg_stat_statements extension active" \
+      "$(run_ssh "$DB" "sudo -u postgres psql -d app -tAc \"SELECT 1 FROM pg_extension WHERE extname='pg_stat_statements'\"")" \
+      '^1$'
+check "exporter user has pg_monitor role" \
+      "$(run_ssh "$DB" "sudo -u postgres psql -tAc \"SELECT 1 FROM pg_auth_members JOIN pg_roles m ON m.oid=roleid JOIN pg_roles e ON e.oid=member WHERE m.rolname='pg_monitor' AND e.rolname='exporter'\"")" \
+      '^1$'
 
-echo ""
-echo "================================================"
+printf "\n${YELLOW}====================================${NC}\n"
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
-  echo -e "${GREEN}All $PASS/$TOTAL checks PASSED${NC}"
-  exit 0
+  printf "${GREEN}All %s/%s checks PASSED${NC}\n" "$PASS" "$TOTAL"
 else
-  echo -e "${RED}$FAIL of $TOTAL checks FAILED${NC} ($PASS passed)"
-  echo "Last command output saved to /tmp/verify-iter5.log"
-  exit 1
+  printf "${RED}%s of %s checks FAILED${NC} (%s passed)\n" "$FAIL" "$TOTAL" "$PASS"
 fi
+printf "${YELLOW}====================================${NC}\n"
+
+exit "$FAIL"

@@ -101,6 +101,11 @@
   become: true
   notify: restart grafana
 
+# Force pending restart handlers to run now. Otherwise the
+# next task starts services with stale config from before.
+- name: Run pending handlers before starting services
+  ansible.builtin.meta: flush_handlers
+
 # enabled: true makes them start on boot. state: started
 # runs them now. Without enabled, a reboot kills monitoring.
 - name: Ensure monitoring services running
