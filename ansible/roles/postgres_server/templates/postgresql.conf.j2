@@ -32,7 +32,21 @@ log_disconnections = on
 log_line_prefix = '%m [%p] %u@%d from %h '
 log_statement = 'ddl'
 
-# pgAudit configuration
-shared_preload_libraries = 'pgaudit'
-pgaudit.log = 'ddl, write'
+# Rotate the log file daily or when it hits 100 MB.
+# Without rotation the disk fills with audit history.
+log_rotation_age = 1d
+log_rotation_size = 100MB
+
+# Loads extensions into the server at startup.
+# pgaudit logs what changed, pg_stat_statements logs how slow.
+shared_preload_libraries = 'pgaudit,pg_stat_statements'
+
+# pgaudit records who changed what in the database.
+# WRITE catches data changes, DDL catches schema changes.
+pgaudit.log = '{{ pg_audit_log }}'
 pgaudit.log_catalog = off
+
+# pg_stat_statements collects per-query timing data so we
+# can spot slow queries. Track 'all' includes nested calls.
+pg_stat_statements.max = {{ pg_stat_statements_max }}
+pg_stat_statements.track = all

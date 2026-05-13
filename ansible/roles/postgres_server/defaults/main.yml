@@ -19,3 +19,11 @@ pg_app_user: app_rw
 # inventory so a new web server is picked up automatically
 # — no edit here. /32 means a single host, not a subnet.
 pg_allowed_clients: "{{ groups['web'] | sort | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', '/32') | list }}"
+
+# Audit categories pgaudit records. WRITE = data changes,
+# DDL = schema changes — both needed for the audit trail.
+pg_audit_log: 'ddl, write'
+
+# How many distinct queries pg_stat_statements keeps stats
+# for. Oldest get dropped above the cap. 10000 fits a lab.
+pg_stat_statements_max: 10000

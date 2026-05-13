@@ -1,9 +1,12 @@
+# Catches spikes without flooding the disk with samples.
 prometheus_scrape_interval: "15s"
-prometheus_port: 9090
-prometheus_retention: "1y"
 
-grafana_port: 3000
+# Older data is dropped at this age. Keeps the disk from growing forever.
+prometheus_retention: "15d"
 
+# Where Prometheus reads database stats. 9187 is the upstream default.
 postgres_exporter_port: 9187
 
-alertmanager_port: 9093
+# Grafana builds its own links. If it thinks it lives at /
+# but users come via /grafana, the links break.
+grafana_root_url: "http://{{ hostvars[groups['lb'][0]]['ansible_host'] }}/grafana"

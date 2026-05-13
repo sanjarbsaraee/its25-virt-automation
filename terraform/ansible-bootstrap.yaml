@@ -68,6 +68,14 @@ runcmd:
   # login shells without manual sourcing.
   - sudo -H -u automation pipx ensurepath
 
+  # Symlink ansible binaries into /usr/local/bin so they work
+  # in fresh non-login SSH sessions without sourcing .profile.
+  - ln -sf /home/automation/.local/bin/ansible /usr/local/bin/ansible
+  - ln -sf /home/automation/.local/bin/ansible-playbook /usr/local/bin/ansible-playbook
+  - ln -sf /home/automation/.local/bin/ansible-galaxy /usr/local/bin/ansible-galaxy
+  - ln -sf /home/automation/.local/bin/ansible-inventory /usr/local/bin/ansible-inventory
+  - ln -sf /home/automation/.local/bin/ansible-vault /usr/local/bin/ansible-vault
+
   # -p puts packages in ./collections, where Ansible looks.
   # Without it, packages land in ~/.ansible/.
   - sudo -u automation /home/automation/.local/bin/ansible-galaxy collection install -p

@@ -1,5 +1,27 @@
----
-- name: Restart grafana
+# Reloads each service after its config files change.
+# Tasks "notify" the matching handler, Ansible runs them
+# once at the end of the play even if many tasks notify.
+
+- name: restart prometheus
+  ansible.builtin.systemd:
+    name: prometheus
+    state: restarted
+  become: true
+
+- name: restart grafana
   ansible.builtin.systemd:
     name: grafana-server
     state: restarted
+  become: true
+
+- name: restart alertmanager
+  ansible.builtin.systemd:
+    name: prometheus-alertmanager
+    state: restarted
+  become: true
+
+- name: restart postgres_exporter
+  ansible.builtin.systemd:
+    name: prometheus-postgres-exporter
+    state: restarted
+  become: true

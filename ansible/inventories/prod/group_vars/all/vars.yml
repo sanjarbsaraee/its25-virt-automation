@@ -1,28 +1,48 @@
-# Shared variables referenced by multiple roles.
+# Variables every role can see. Anything used by more
+# than one role lives here so we avoid duplication.
 
+# Skips apt update when the cache is fresh enough.
+# 3600 = one hour. Reruns become much faster.
 apt_cache_valid_time: 3600
+
+# First three numbers of the home LAN IP. UFW and Terraform
+# build addresses on top of this — keep them in sync.
 lan_subnet: "192.168.50"
 
-# LAN subnet prefix used by UFW rules in the common role.
-# Mirrors the same-named Terraform variable, keep in sync.
-lan_subnet: "192.168.50"
-
-# Flask needs to know where the database lives. Pulled
-# from inventory so the value follows each workspace.
+# The database lives on db-01. Looked up from inventory so
+# the address follows whichever workspace runs the playbook.
 db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
 db_port: 5432
 db_name: app
 db_user: app_rw
 
-# Read from /etc/environment, written by cloud-init.
+# Credentials for logging in to Infisical. Cloud-init writes
+# them to /etc/environment when the VM first boots.
 infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
 infisical_environment: "{{ lookup('env', 'INFISICAL_ENVIRONMENT') }}"
 
-# Fetched from Infisical at runtime. Never stored on disk.
-# The lookup returns an object with key and value —
-# .value extracts the password string.
+# Fetched live from Infisical, never written to disk.
+# .value pulls the password out of the returned object.
 db_password: "{{ lookup('infisical.vault.read_secrets',
   project_id=infisical_project_id,
   env_slug=infisical_environment,
   path='/',
   secret_name='DB_PASSWORD').value }}"
+
+# Where monitor-01 sits. Looked up from inventory so it
+# follows whichever workspace runs the playbook.
+monitor_ip: "{{ hostvars[groups['monitor'][0]]['ansible_host'] }}"
+
+# Ports the three monitoring services listen on.
+# Firewall and lb-01 config both need them.
+grafana_port: 3000
+prometheus_port: 9090
+alertmanager_port: 9093
+
+# Read-only password the exporter uses to log in to db-01.
+# Two roles share it — db creates the user, monitor uses it.
+pg_exporter_password: "{{ lookup('infisical.vault.read_secrets',
+  project_id=infisical_project_id,
+  env_slug=infisical_environment,
+  path='/',
+  secret_name='PG_EXPORTER_PASSWORD').value }}"
