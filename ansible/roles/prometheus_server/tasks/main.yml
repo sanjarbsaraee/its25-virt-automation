@@ -76,6 +76,14 @@
   become: true
   notify: restart postgres_exporter
 
+# apt postinst started the exporter before this config existed,
+# hitting systemd's start-limit. Clear it so restart can run.
+- name: postgres_exporter | Clear failed state from premature start
+  ansible.builtin.command:
+    cmd: systemctl reset-failed prometheus-postgres-exporter
+  changed_when: false
+  become: true
+
 # Grafana builds its own URLs. Both lines tell it that
 # it lives at /grafana, otherwise CSS and JS links break.
 - name: Grafana | Set root_url and subpath
