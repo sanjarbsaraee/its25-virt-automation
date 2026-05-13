@@ -1,7 +1,0 @@
-- [x] Provision `monitor-01` VM with IP `192.168.50.250` (Terraform)
-- [x] Update Proxmox firewall rules for node exporter traffic (Terraform)
-- [x] Apply `prometheus.prometheus` collection to `monitor-01` (Ansible)
-- [x] Configure Nginx on `lb-01` to reverse proxy `/grafana` (Ansible)
-- [x] Configure Grafana's `root_url` (Ansible)
-- [x] Install `pgAudit` on `db-01` and configure (Ansible)
-- [x] Run verification script `./scripts/verify-iter5.sh`
