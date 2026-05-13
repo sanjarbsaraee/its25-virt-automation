@@ -93,7 +93,7 @@
 # the manual click-through on first login.
 - name: Grafana | Deploy Prometheus data source
   ansible.builtin.template:
-    src: grafana-datasource.yaml.j2
+    src: grafana-datasource.yml.j2
     dest: /etc/grafana/provisioning/datasources/prometheus.yaml
     owner: root
     group: grafana
