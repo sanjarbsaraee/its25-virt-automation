@@ -19,6 +19,7 @@ locals {
     "web-02"       = { role = "web", ip_offset = 21, cores = 2, memory = 512, disk_size = 20, desc = "Flask Web Server 2" }
     "db-01"        = { role = "db", ip_offset = 30, cores = 2, memory = 1024, disk_size = 40, desc = "PostgreSQL DB" }
     "lb-01"        = { role = "lb", ip_offset = 40, cores = 2, memory = 512, disk_size = 20, desc = "Nginx Load Balancer" }
+    "monitor-01"   = { role = "monitor", ip_offset = 50, cores = 2, memory = 2048, disk_size = 20, desc = "Prometheus + Grafana" }
   }
 }
 

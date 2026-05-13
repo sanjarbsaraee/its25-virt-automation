@@ -23,6 +23,7 @@
     name:
       - "postgresql-{{ pg_version }}"
       - "postgresql-contrib-{{ pg_version }}"
+      - "postgresql-{{ pg_version }}-pgaudit"
       - python3-psycopg2
       - acl
       - ufw
@@ -106,6 +107,56 @@
   become_user: postgres
   no_log: true
 
+# --- pgaudit and exporter ---
+# Audit logging and the monitoring user. Both need the
+# server restarted first so pg_stat_statements loads.
+
+# Triggers any pending postgres restart now so the next
+# tasks run against a server with both libraries loaded.
+- name: DB | Apply pending restarts before extensions
+  ansible.builtin.meta: flush_handlers
+
+# Loading pgaudit in postgresql.conf is not enough.
+# Extensions also have to be turned on per database.
+- name: DB | Enable pgaudit in the app database
+  community.postgresql.postgresql_ext:
+    name: pgaudit
+    db: "{{ pg_app_db }}"
+    state: present
+  become: true
+  become_user: postgres
+
+# Lets us see which queries are slow and how often they run.
+- name: DB | Enable pg_stat_statements in the app database
+  community.postgresql.postgresql_ext:
+    name: pg_stat_statements
+    db: "{{ pg_app_db }}"
+    state: present
+  become: true
+  become_user: postgres
+
+# Read-only login the postgres exporter uses.
+# Separate from app_rw so a leak cannot change data.
+- name: DB | Create postgres exporter user
+  community.postgresql.postgresql_user:
+    name: exporter
+    password: "{{ pg_exporter_password }}"
+    role_attr_flags: LOGIN
+    state: present
+  become: true
+  become_user: postgres
+  no_log: true
+
+# pg_monitor is built into Postgres. It grants read access
+# to every stats view — exactly what the exporter needs.
+- name: DB | Grant pg_monitor role to exporter
+  community.postgresql.postgresql_membership:
+    source_role: pg_monitor
+    target_roles: exporter
+    state: present
+  become: true
+  become_user: postgres
+
 # --- Firewall ---
 # The common role handles SSH for every VM. This file
 # only adds the database-specific rule.
@@ -117,6 +168,17 @@
     proto: tcp
     src: "{{ item }}"
   loop: "{{ pg_allowed_clients | map('regex_replace', '/32$', '') | list }}"
+  become: true
+
+# monitor-01 also needs to reach 5432 so postgres_exporter
+# can log in. UFW denies everyone else by default.
+- name: DB | Allow Postgres from monitor-01
+  community.general.ufw:
+    rule: allow
+    port: "5432"
+    proto: tcp
+    src: "{{ monitor_ip }}"
+    comment: "postgres_exporter from monitor-01"
   become: true
 
 - name: DB | Enable UFW

@@ -83,3 +83,30 @@
 # Clears cached SSH sessions so the next task builds new ones.
 - name: UFW | Reset SSH after firewall enable
   ansible.builtin.meta: reset_connection
+
+# node_exporter publishes CPU, RAM, disk and network
+# numbers on port 9100. Installed on every VM so
+# Prometheus on monitor-01 can read them.
+- name: Common | Install node_exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+  become: true
+
+- name: Common | Ensure node_exporter is enabled and running
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  become: true
+
+# UFW denies incoming by default. Open 9100 only for
+# monitor-01 so other VMs and external networks stay out.
+- name: UFW | Allow node_exporter from monitor-01
+  community.general.ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    src: "{{ monitor_ip }}"
+    comment: "node_exporter from monitor-01"
+  become: true

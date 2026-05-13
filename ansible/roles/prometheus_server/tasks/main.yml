@@ -1,0 +1,140 @@
+# The Debian archive has no Grafana, so we need its own
+# repo. The GPG key proves the packages come from Grafana.
+- name: Grafana | Download apt signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+  become: true
+
+# Tells apt where to download Grafana from. signed-by
+# limits the key to this one repo, not the whole system.
+- name: Grafana | Add apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+  become: true
+
+# Prometheus collects metrics. Alertmanager routes alerts.
+# postgres_exporter reads database stats. Grafana shows dashboards.
+- name: Install monitoring stack
+  ansible.builtin.apt:
+    name:
+      - prometheus
+      - prometheus-alertmanager
+      - prometheus-postgres-exporter
+      - grafana
+    state: present
+    update_cache: true
+  become: true
+
+# Caps how long Prometheus keeps data. Without it, the
+# disk fills up over months and the service crashes.
+- name: Prometheus | Set retention
+  ansible.builtin.lineinfile:
+    path: /etc/default/prometheus
+    regexp: '^ARGS='
+    line: 'ARGS="--storage.tsdb.retention.time={{ prometheus_retention }}"'
+  become: true
+  notify: restart prometheus
+
+# Tells Prometheus which servers to read from. Built from
+# inventory so a new VM shows up here on next playbook run.
+- name: Prometheus | Deploy main config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: prometheus
+    mode: "0640"
+  become: true
+  notify: restart prometheus
+
+# Rules turn metric values into alerts. Without rules,
+# Alertmanager has nothing to route.
+- name: Prometheus | Deploy alert rules
+  ansible.builtin.template:
+    src: alert_rules.yml.j2
+    dest: /etc/prometheus/alert_rules.yml
+    owner: root
+    group: prometheus
+    mode: "0640"
+  become: true
+  notify: restart prometheus
+
+# Where the exporter logs in to db-01. Password comes from
+# Infisical at runtime, never stored on disk.
+- name: postgres_exporter | Configure connection
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-postgres-exporter
+    content: |
+      DATA_SOURCE_NAME="postgresql://exporter:{{ pg_exporter_password }}@{{ db_host }}:5432/{{ db_name }}?sslmode=require"
+    owner: root
+    group: prometheus
+    mode: "0640"
+  become: true
+  notify: restart postgres_exporter
+
+# apt postinst started the exporter before this config existed,
+# hitting systemd's start-limit. Clear it so restart can run.
+- name: postgres_exporter | Clear failed state from premature start
+  ansible.builtin.command:
+    cmd: systemctl reset-failed prometheus-postgres-exporter
+  changed_when: false
+  become: true
+
+# Grafana builds its own URLs. Both lines tell it that
+# it lives at /grafana, otherwise CSS and JS links break.
+- name: Grafana | Set root_url and subpath
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^;?root_url\s*=', line: "root_url = {{ grafana_root_url }}" }
+    - { regexp: '^;?serve_from_sub_path\s*=', line: "serve_from_sub_path = true" }
+  become: true
+  notify: restart grafana
+
+# Pre-configures Prometheus as the data source so we skip
+# the manual click-through on first login.
+- name: Grafana | Deploy Prometheus data source
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yaml
+    owner: root
+    group: grafana
+    mode: "0640"
+  become: true
+  notify: restart grafana
+
+# Force pending restart handlers to run now. Otherwise the
+# next task starts services with stale config from before.
+- name: Run pending handlers before starting services
+  ansible.builtin.meta: flush_handlers
+
+# enabled: true makes them start on boot. state: started
+# runs them now. Without enabled, a reboot kills monitoring.
+- name: Ensure monitoring services running
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - prometheus
+    - prometheus-alertmanager
+    - prometheus-postgres-exporter
+    - grafana-server
+  become: true
+
+# Only lb-01 reaches Grafana directly. Users come via
+# lb-01/grafana, so port 3000 stays closed to everyone else.
+- name: UFW | Allow Grafana from lb-01
+  community.general.ufw:
+    rule: allow
+    port: "3000"
+    proto: tcp
+    src: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
+    comment: "Grafana from lb-01"
+  become: true

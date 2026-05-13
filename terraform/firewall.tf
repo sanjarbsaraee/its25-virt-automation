@@ -1,6 +1,6 @@
-# Two filters that block traffic to each VM. One runs in
-# the Proxmox host, the other inside the VM. If we
-# misconfigure one, the other still protects.
+# Defense in depth. Two firewalls per VM — one on the
+# Proxmox host, one inside. A mistake in one still gets
+# blocked by the other.
 
 # --- Per-VM activation ---
 # The cluster-level switch at the bottom of this file is
@@ -25,9 +25,8 @@ resource "proxmox_virtual_environment_firewall_options" "vm" {
 # These groups let many VMs share the same rules. Change
 # the group, every VM that uses it gets the update.
 
-# Lets us SSH in from two places, the office LAN and
-# Tailscale. Tailscale needs its own rule since it uses a
-# different IP range (100.64.0.0/10).
+# Two ways in via SSH: the office LAN and Tailscale.
+# Tailscale lives in 100.64.0.0/10 and needs its own rule.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "ssh_from_mgmt" {
   name    = "ssh-from-mgmt"
   comment = "SSH inbound from LAN and Tailscale"
@@ -66,9 +65,8 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "http_pub
   }
 }
 
-# The load balancer must be the only way to reach the
-# Flask app. This rule blocks anyone who tries to reach a
-# web server directly.
+# Web servers only answer through lb-01. Direct access
+# from anywhere else stays blocked.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "flask_from_lb" {
   name    = "flask-from-lb"
   comment = "Flask port from lb-01"
@@ -111,6 +109,57 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
   }
 }
 
+# Lets the postgres exporter on monitor-01 read database
+# stats. Other hosts cannot reach 5432 on db-01.
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_monitor" {
+  name    = "pg-from-monitor"
+  comment = "PostgreSQL from monitor-01"
+
+  rule {
+    enabled = true
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "5432"
+    source  = "${var.lan_subnet}.${local.env.ip_base + 50}/32"
+    comment = "Postgres from monitor-01"
+  }
+}
+
+# Prometheus on monitor-01 reads metrics from every VM
+# on port 9100. Only monitor-01's IP is allowed in.
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "node_exp_from_mon" {
+  name    = "node-exp-from-mon"
+  comment = "Node exporter metrics from monitor-01"
+
+  rule {
+    enabled = true
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "9100"
+    source  = "${var.lan_subnet}.${local.env.ip_base + 50}/32"
+    comment = "Metrics from monitor-01"
+  }
+}
+
+# Grafana runs on monitor-01:3000 but users reach it via
+# lb-01/grafana. Only lb-01 is allowed in on the back end.
+resource "proxmox_virtual_environment_cluster_firewall_security_group" "grafana_from_lb" {
+  name    = "grafana-from-lb"
+  comment = "Grafana port from lb-01"
+
+  rule {
+    enabled = true
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "3000"
+    source  = "${var.lan_subnet}.${local.env.ip_base + 40}/32"
+    comment = "Grafana from lb-01"
+  }
+}
+
 # --- Per-VM rule bindings ---
 # One firewall_rules resource per VM. The bpg provider
 # does not allow more (issue #1492).
@@ -126,6 +175,12 @@ resource "proxmox_virtual_environment_firewall_rules" "vm_rules" {
   rule {
     security_group = proxmox_virtual_environment_cluster_firewall_security_group.ssh_from_mgmt.name
     comment        = "SSH baseline"
+  }
+
+  # All VMs accept metrics scraping from monitor-01.
+  rule {
+    security_group = proxmox_virtual_environment_cluster_firewall_security_group.node_exp_from_mon.name
+    comment        = "Node exporter metrics"
   }
 
   dynamic "rule" {
@@ -151,6 +206,22 @@ resource "proxmox_virtual_environment_firewall_rules" "vm_rules" {
       comment        = "PostgreSQL from web"
     }
   }
+
+  dynamic "rule" {
+    for_each = each.value.role == "db" ? [1] : []
+    content {
+      security_group = proxmox_virtual_environment_cluster_firewall_security_group.pg_from_monitor.name
+      comment        = "PostgreSQL from monitor-01"
+    }
+  }
+
+  dynamic "rule" {
+    for_each = each.value.role == "monitor" ? [1] : []
+    content {
+      security_group = proxmox_virtual_environment_cluster_firewall_security_group.grafana_from_lb.name
+      comment        = "Grafana from lb-01"
+    }
+  }
 }
 
 # --- Datacenter activation ---
@@ -169,8 +240,8 @@ resource "proxmox_virtual_environment_cluster_firewall" "datacenter" {
     rate    = "5/second"
   }
 
-  # Waits for SSH rules to exist first. Otherwise the
-  # apply turns on the firewall before SSH is allowed and locks us out mid-run.
+  # Without this, the firewall switches on before SSH is
+  # allowed and locks us out mid-apply.
   depends_on = [
     proxmox_virtual_environment_firewall_options.vm,
     proxmox_virtual_environment_firewall_rules.vm_rules,
