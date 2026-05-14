@@ -8,7 +8,7 @@
 variable "proxmox_endpoint" {
   description = "URL to the Proxmox API, e.g. https://10.0.0.1:8006/"
   type        = string
-  default     = "https://100.94.227.10:8006/"
+  default     = "https://192.168.50.197:8006/"
 }
 
 variable "proxmox_node_name" {
@@ -20,7 +20,7 @@ variable "proxmox_node_name" {
 variable "proxmox_node_address" {
   description = "IP or hostname Terraform uses to SSH into the Proxmox node."
   type        = string
-  default     = "100.94.227.10"
+  default     = "192.168.50.197"
 }
 
 # ---------------------------------------------------------------------------

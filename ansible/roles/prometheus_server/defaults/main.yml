@@ -9,4 +9,4 @@ postgres_exporter_port: 9187
 
 # Grafana builds its own links. If it thinks it lives at /
 # but users come via /grafana, the links break.
-grafana_root_url: "http://{{ hostvars[groups['lb'][0]]['ansible_host'] }}/grafana"
+grafana_root_url: "http://{{ hostvars[groups['lb'][0]]['ansible_host'] }}/grafana/"

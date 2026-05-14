@@ -65,10 +65,18 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "http_pub
   }
 }
 
+# --- Workspace-scoped security groups ---
+# Cluster security groups are global Proxmox objects
+# identified by name. If two workspaces use the same
+# name, the latest apply overwrites the previous one.
+# Proxmox caps group names at 18 characters, so the base
+# names stay short to leave room for the workspace suffix
+# (e.g. "-sanjar" eats 7 characters).
+
 # Web servers only answer through lb-01. Direct access
 # from anywhere else stays blocked.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "flask_from_lb" {
-  name    = "flask-from-lb"
+  name    = "flask-lb${local.env.name_suffix}"
   comment = "Flask port from lb-01"
 
   rule {
@@ -85,7 +93,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "flask_fr
 # Only the web servers should reach the database. Two
 # rules because Proxmox accepts one sender address per rule.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_web" {
-  name    = "pg-from-web"
+  name    = "pg-web${local.env.name_suffix}"
   comment = "PostgreSQL from web tier"
 
   rule {
@@ -112,7 +120,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
 # Lets the postgres exporter on monitor-01 read database
 # stats. Other hosts cannot reach 5432 on db-01.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_monitor" {
-  name    = "pg-from-monitor"
+  name    = "pg-mon${local.env.name_suffix}"
   comment = "PostgreSQL from monitor-01"
 
   rule {
@@ -129,7 +137,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "pg_from_
 # Prometheus on monitor-01 reads metrics from every VM
 # on port 9100. Only monitor-01's IP is allowed in.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "node_exp_from_mon" {
-  name    = "node-exp-from-mon"
+  name    = "nodexp-mon${local.env.name_suffix}"
   comment = "Node exporter metrics from monitor-01"
 
   rule {
@@ -146,7 +154,7 @@ resource "proxmox_virtual_environment_cluster_firewall_security_group" "node_exp
 # Grafana runs on monitor-01:3000 but users reach it via
 # lb-01/grafana. Only lb-01 is allowed in on the back end.
 resource "proxmox_virtual_environment_cluster_firewall_security_group" "grafana_from_lb" {
-  name    = "grafana-from-lb"
+  name    = "grafana-lb${local.env.name_suffix}"
   comment = "Grafana port from lb-01"
 
   rule {
