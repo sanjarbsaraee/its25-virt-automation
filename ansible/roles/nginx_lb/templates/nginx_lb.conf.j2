@@ -21,10 +21,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # /grafana traffic goes to monitor-01. Keeps Grafana
-    # behind the load balancer so port 3000 stays closed.
+    # /grafana traffic goes to monitor-01. No trailing slash on
+    # proxy_pass so Grafana's serve_from_sub_path stays consistent.
     location /grafana/ {
-        proxy_pass http://{{ monitor_ip }}:{{ grafana_port }}/;
+        proxy_pass http://{{ monitor_ip }}:{{ grafana_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
