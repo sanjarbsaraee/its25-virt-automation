@@ -43,9 +43,10 @@ want_proxmox_nodes_ansible_host: false
 exclude_nodes: true
 
 # Only include VMs whose name ends with this workspace's suffix.
-# Without this filter, a shared Proxmox host shows other teams' VMs.
+# The 'is defined' guard skips LXC containers (tailscale-gw)
+# that lack proxmox_name and would otherwise crash the filter.
 filters:
-  - "proxmox_name.endswith(lookup('env', 'WORKSPACE_SUFFIX') | default('', true))"
+  - "proxmox_name is defined and proxmox_name.endswith(lookup('env', 'WORKSPACE_SUFFIX') | default('', true))"
 
 # Group remaining VMs by their role prefix so playbooks can
 # target hosts: web instead of listing each server.
