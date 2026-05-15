@@ -71,6 +71,12 @@
     comment: "SSH from Tailscale CGNAT with rate-limit"
   become: true
 
+- name: UFW | Check status
+  ansible.builtin.command: ufw status
+  register: ufw_status_result
+  changed_when: false
+  become: true
+
 # Enable flushes conntrack and kills Ansible's SSH.
 # async + poll 0 means start it and move on, don't wait.
 - name: UFW | Enable UFW
@@ -79,6 +85,7 @@
   become: true
   async: 30
   poll: 0
+  when: "'Status: active' not in ufw_status_result.stdout"
 
 # Clears cached SSH sessions so the next task builds new ones.
 - name: UFW | Reset SSH after firewall enable

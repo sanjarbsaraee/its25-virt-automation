@@ -121,7 +121,7 @@
 - name: DB | Enable pgaudit in the app database
   community.postgresql.postgresql_ext:
     name: pgaudit
-    db: "{{ pg_app_db }}"
+    login_db: "{{ pg_app_db }}"
     state: present
   become: true
   become_user: postgres
@@ -130,7 +130,7 @@
 - name: DB | Enable pg_stat_statements in the app database
   community.postgresql.postgresql_ext:
     name: pg_stat_statements
-    db: "{{ pg_app_db }}"
+    login_db: "{{ pg_app_db }}"
     state: present
   become: true
   become_user: postgres
