@@ -46,3 +46,10 @@ pg_exporter_password: "{{ lookup('infisical.vault.read_secrets',
   env_slug=infisical_environment,
   path='/',
   secret_name='PG_EXPORTER_PASSWORD').value }}"
+
+# Grafana admin password fetched from Infisical.
+grafana_admin_password: "{{ lookup('infisical.vault.read_secrets',
+  project_id=infisical_project_id,
+  env_slug=infisical_environment,
+  path='/',
+  secret_name='GRAFANA_ADMIN_PASSWORD').value }}"
