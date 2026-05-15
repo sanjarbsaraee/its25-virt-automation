@@ -97,6 +97,15 @@
   become: true
   notify: restart grafana
 
+- name: Grafana | Set admin password via environment
+  ansible.builtin.lineinfile:
+    path: /etc/default/grafana-server
+    regexp: '^GF_SECURITY_ADMIN_PASSWORD='
+    line: "GF_SECURITY_ADMIN_PASSWORD={{ grafana_admin_password }}"
+    create: true
+  become: true
+  notify: restart grafana
+
 # Pre-configures Prometheus as the data source so we skip
 # the manual click-through on first login.
 - name: Grafana | Deploy Prometheus data source
