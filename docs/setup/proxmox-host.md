@@ -265,6 +265,8 @@ This setup leaves the Proxmox web UI on a self-signed certificate. Replacing it 
 
 Once the host is configured, the project continues with Tailscale for remote access to the web UI. That procedure is documented separately in [Tailscale on the Proxmox host](tailscale-on-host.md).
 
+> **Note (2026-05-14):** The host still runs Tailscale for administrative SSH access, but the subnet router role (advertising `192.168.50.0/24` to the tailnet) was moved to a dedicated `tailscale-gw` LXC at `192.168.50.5`. This was done after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter dropped return traffic for HTTP-style connections. See `bugfix-session-2026-05-14.md` for details.
+
 ## References
 
 - Proxmox VE installation: https://pve.proxmox.com/wiki/Installation

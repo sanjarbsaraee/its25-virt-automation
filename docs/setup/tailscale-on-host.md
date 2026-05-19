@@ -2,6 +2,8 @@
 
 This document explains how we installed Tailscale on our Proxmox VE host, and why. The goal is to give both team members remote access to the Proxmox web interface without exposing port 8006 to the internet.
 
+> **Update 2026-05-14:** The host still runs Tailscale, but no longer acts as a subnet router for the LAN. That role was moved to a dedicated `tailscale-gw` LXC container at `192.168.50.5` after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter caused return traffic from VMs to be dropped. The host remains on the tailnet as a regular member, used for administrative SSH access to the hypervisor itself. The rest of this document still applies to the host's own Tailscale installation — the migration of the subnet router is documented in `bugfix-session-2026-05-14.md`.
+
 ## Overview
 
 Tailscale is a mesh VPN built on WireGuard. Every device running the Tailscale client becomes a peer with a stable address in the 100.64.0.0/10 range. Traffic flows directly between peers when NAT traversal succeeds, and falls back to DERP relay servers operated by Tailscale when it does not. All traffic is end-to-end encrypted with WireGuard, including when relayed, since DERP servers only forward already encrypted packets.
@@ -148,6 +150,52 @@ Tailscale uses a multi-user tailnet model. Each user signs in with their own ide
 **Why approval required is enabled:**
 
 The default configuration requires an admin to approve new devices before they can reach other nodes in the tailnet. Even if an invite link leaks, the device cannot access project infrastructure without a second explicit action from the tailnet owner. This is a small but real additional layer of defense.
+
+## Subnet routing
+
+**Status 2026-05-14:** Subnet routing is no longer performed by the host. A dedicated `tailscale-gw` LXC container at `192.168.50.5` advertises `192.168.50.0/24` instead. The host's `--advertise-routes` flag has been removed and its route has been un-approved in the Tailscale admin UI.
+
+**Why the migration:** The original setup (described below for historical reference) hit a bug where return traffic from VMs to laptops was silently dropped. The host's own firewall (Proxmox/nftables) and Tailscale's stateful filter held independent conntrack tables that did not stay synchronized. When a VM replied to a laptop's request, the response matched the host's conntrack but not Tailscale's, so Tailscale dropped it. SSH happened to work because of how stateful filtering treats long-lived sessions; HTTP and other short-lived flows failed. Moving the subnet router to a dedicated container with no other firewall responsibilities eliminated the conflict. See `bugfix-session-2026-05-14.md` for the full diagnosis.
+
+**Historical setup (2026-05-11 to 2026-05-14):** The Proxmox host advertised the LAN subnet `192.168.50.0/24` over Tailscale so team laptops could reach VMs directly, not only via ProxyJump through the host.
+
+The original motivation: setup relied on ProxyJump via the Proxmox host's Tailscale address. This works for SSH but breaks anything that opens a direct TCP socket — `curl http://192.168.50.40/` from a laptop, browser access to Grafana later in iter 5, smoke tests that hit Nginx directly. Subnet routing solved all of these — until the conntrack bug surfaced.
+
+The historical procedure for enabling subnet routing on the host is kept below for reference, but the same procedure now applies to the `tailscale-gw` LXC instead.
+
+**Step 1. Enable IPv4 and IPv6 forwarding on the host (or container).**
+
+```bash
+echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-tailscale.conf
+echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+```
+
+Forwarding is required because Tailscale receives packets from a laptop and forwards them onto the LAN where the VMs live. Without forwarding the packets are dropped.
+
+**Step 2. Advertise the subnet.**
+
+```bash
+sudo tailscale up --advertise-routes=192.168.50.0/24
+```
+
+This re-establishes the Tailscale connection with the new advertisement. The host's existing identity is preserved.
+
+**Step 3. Approve the subnet in the admin console.**
+
+In the Tailscale admin console at `https://login.tailscale.com/admin/machines`, find the Proxmox host's row, click the three-dot menu, and select "Edit route settings". Toggle on `192.168.50.0/24` and save. Without this approval the route is advertised but not used by other nodes.
+
+**Step 4. Verify from a laptop.**
+
+```bash
+# From a team laptop with Tailscale connected
+ping 192.168.50.20    # should reach web-01 directly
+curl http://192.168.50.40/  # should reach lb-01 directly
+```
+
+Both should succeed without going through the Proxmox host's IP. Tailscale rewrites the destination to route via the host transparently.
+
+**Trade-off:** All LAN traffic from laptops to VMs now passes through the Proxmox host. The host becomes a chokepoint, but the alternative (giving every VM its own Tailscale client) requires installing Tailscale inside each VM and managing tags + approvals per VM. For a 5-7 VM lab project, subnet routing through the host is the simpler choice.
 
 ## Known limitations and future work
 
