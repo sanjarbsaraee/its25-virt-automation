@@ -42,7 +42,7 @@ resource "proxmox_virtual_environment_file" "ansible_bootstrap" {
       infisical_environment   = var.infisical_environment,
       workspace_suffix        = local.env.name_suffix,
     })
-    file_name = "ansible-bootstrap.yaml"
+    file_name = "ansible-bootstrap${local.env.name_suffix}.yaml"
   }
 }
 
