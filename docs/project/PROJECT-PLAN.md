@@ -316,15 +316,11 @@ Sanjar/Jim laptop → terraform CLI → HCP Terraform → self-hosted agent on P
 
 **Configuration flow (Ansible path):**
 
-In iter 1 (push mode):
 ```
 Team member laptop → SSH to control-node → Ansible playbook → configuration applied
 ```
 
-In iter 3 and onward (pull mode):
-```
-Each VM → ansible-pull cron → fetch repo from GitHub → apply playbook locally
-```
+Push mode is used throughout. Pull mode (`ansible-pull` cron on each VM) was planned for iteration 3 onward but never implemented, because with six VMs on one LAN the SSH fan-out bottleneck that pull solves does not exist. See `docs/project/RETROSPECTIVE.md` for the trade-off analysis.
 
 **Monitoring flow:**
 ```
@@ -436,14 +432,15 @@ The Proxmox modules were extracted from `community.general` into their own colle
 
 **How Ansible is run in the project:**
 
-In iteration 1, Ansible runs from a team member's laptop (push mode, Ansible on the laptop SSHes into the VM and applies the configuration). From iteration 3 onward the plan is to move to **pull mode** with `ansible-pull` on the control-node and on each configured VM.
+Ansible runs from the control-node in push mode throughout all iterations. A team member SSHes into the control-node, and Ansible there SSHes out to every worker VM and applies tasks. The VM is a passive recipient.
 
-The difference:
+Pull mode (`ansible-pull` on each VM, fetching the playbook from Git and applying locally) was planned for iteration 3 to remove the central control point. It was never implemented. Pull's main benefit is removing SSH fan-out from one control node, which only becomes a bottleneck at hundreds of hosts. With six VMs on one LAN, that bottleneck does not exist, while pull's costs (Ansible installed on every VM, debugging by SSH to read individual logs, no real-time orchestration) still apply. The trade-off is documented in `docs/project/RETROSPECTIVE.md`.
 
-- **Push mode (iter 1):** The Ansible process runs on the laptop, SSHes out to every VM, applies tasks. The VM is a passive recipient.
-- **Pull mode (iter 3+):** Every VM runs a cron job with `ansible-pull` that fetches the Ansible code directly from the Git repo and applies it locally. No central process needs SSH access to every VM.
+The push pattern:
 
-Pull mode is safer in a multi-zone architecture because no central account needs SSH rights to all zones. Each VM fetches only its own configuration from Git. Push mode is simpler for a first iteration when there is only one VM.
+- The Ansible process runs on the control-node, SSHes out to every worker, applies tasks
+- The VM is a passive recipient
+- Secrets are fetched at runtime from Infisical, never written to disk
 
 ### 4.4 HCP Terraform (state backend and run executor)
 
@@ -570,8 +567,6 @@ Tailscale gives:
 - A pull request is required to merge
 - Squash on merge so `main` gets a linear history
 - Branches are deleted after merge
-
-Work is currently ongoing on the `feature/infisical-integration` branch. It is pushed to GitHub with seven commits ahead of `main`.
 
 **Conventional Commits:** Uses `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`. Scopes: `terraform`, `ansible`, `docs`, `ci`, `iter-1` through `iter-5`.
 
