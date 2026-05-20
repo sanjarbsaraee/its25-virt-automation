@@ -164,7 +164,15 @@ on the LAN and `100.94.227.10` on the tailnet.
 │   ├── verify-iter5.sh           # 28 checks for monitoring, pgaudit, exporters
 │   └── verify-node.sh            # General health check for any VM
 │
-├── docs/                         # Setup guides and design records
+├── docs/
+│   ├── setup/                    # Operative how-to
+│   │   ├── proxmox-host.md
+│   │   ├── tailscale-on-host.md
+│   │   └── tailscale-gw-lxc.md
+│   └── project/                  # ADRs and retrospective
+│       ├── DECISIONS.md
+│       ├── RETROSPECTIVE.md
+│       └── projektplan.md
 └── .gitignore
 ```
 
