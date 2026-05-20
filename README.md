@@ -83,37 +83,18 @@ under `docs/` and `scripts/`.
 
 ### Visual progression
 
-Each iteration adds one tier on top of the previous one. The starting
-point is a bare Proxmox hypervisor with nothing on it:
+Each iteration adds one tier on top of the previous one. Starting from
+a bare Proxmox hypervisor:
 
 ![Iteration 0: Starting point](docs/topologi/iter-0-bare-hypervisor.png)
 
-**Iteration 1** brings the control-node online, plus the Terraform
-pipeline, HCP self-hosted agent, Packer golden template, and Infisical
-secrets pipeline:
-
 ![Iteration 1: Foundation](docs/topologi/iter-1-foundation.png)
-
-**Iteration 2** adds the three-tier stack: a Flask web server and a
-PostgreSQL 16 database with TLS:
 
 ![Iteration 2: Three-tier](docs/topologi/iter-2-three-tier.png)
 
-**Iteration 3** adds a second Flask server (web-02) behind an Nginx
-load balancer (lb-01), plus dynamic Ansible inventory through the
-Proxmox API:
-
 ![Iteration 3: Load balancing](docs/topologi/iter-3-load-balancing.png)
 
-**Iteration 4** layers UFW per VM, the Proxmox distributed firewall
-with cluster security groups, SSH hardening via `devsec.hardening`,
-and Tailscale ACLs:
-
 ![Iteration 4: Network hardening](docs/topologi/iter-4-network-hardening.png)
-
-**Iteration 5** adds monitor-01 (Prometheus, Grafana, Alertmanager,
-postgres_exporter), node_exporter on every VM, Grafana served through
-the load balancer, and pgaudit on db-01:
 
 ![Iteration 5: Monitoring](docs/topologi/iter-5-monitoring.png)
 
