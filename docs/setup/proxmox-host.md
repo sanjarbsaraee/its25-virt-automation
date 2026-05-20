@@ -4,7 +4,7 @@ This document describes how the Proxmox VE host that runs the project infrastruc
 
 ## Overview
 
-The host is a small-form-factor AMD machine that runs Proxmox VE 9.1, a Type 1 hypervisor based on Debian 13 Trixie. Once the host is set up, Terraform provisions VMs on it and Ansible configures those VMs. Remote access to the web UI on port 8006 is handled by Tailscale, which is a separate setup document.
+The host is a small-form-factor AMD machine that runs Proxmox VE 9.1, a Type 1 hypervisor (one that runs directly on hardware rather than on top of another operating system) based on Debian 13 Trixie. Once the host is set up, Terraform provisions VMs on it and Ansible configures those VMs. Remote access to the web UI on port 8006 is handled by Tailscale, which is a separate setup document.
 
 The steps below take a new machine from bare metal to a point where Tailscale can be installed and the first VM can be provisioned. The sequence matters. Hardware virtualization has to be enabled before the installer runs. The repository switch has to happen before any `apt upgrade`, otherwise the upgrade will fail on authentication errors against the default enterprise repositories. The host user and SSH configuration are tightened before the Proxmox API is exposed beyond the LAN.
 
@@ -34,7 +34,7 @@ If the firmware is locked and does not expose SVM as a visible setting, the vend
 
 The general installation procedure is covered well in the Proxmox wiki, so this section only records the choices that are specific to this project.
 
-Boot from the USB drive. When the installer asks for the target disk, select the internal NVMe SSD. On our hardware this appears as `/dev/nvme0n1`. The installer writes an LVM-thin layout by default, which is appropriate for a host that will run VMs.
+Boot from the USB drive. When the installer asks for the target disk, select the internal NVMe SSD. On our hardware this appears as `/dev/nvme0n1`. The installer writes an LVM-thin layout by default, which is appropriate for a host that will run VMs. **LVM-thin** is a logical volume layout where the underlying disk space is over-provisioned and storage grows on demand as VMs write to it, instead of being pre-allocated up front.
 
 The network step asks for a management interface, a hostname, an IP address, a gateway, and a DNS server. Choose values that match the local network. The project host uses a static IP in the 192.168.50.0/24 range with the home router as both gateway and DNS. A fully qualified hostname such as `pve.matrix.local` is useful even on a network without a real DNS zone, because Proxmox writes it into its own internal certificates.
 
@@ -52,7 +52,7 @@ Log in as `root` with the password set during installation. The realm is `Linux 
 
 A fresh Proxmox VE install enables the enterprise package repositories by default. The enterprise repositories require a paid Proxmox subscription, and without one, `apt update` returns `401 Unauthorized` for every Proxmox repository on every run. No package upgrades can be installed until this is fixed. The community-supported no-subscription repositories contain the same packages without the subscription requirement, and are the correct choice for a student project.
 
-The configuration uses the deb822 format that Proxmox VE 9 ships with. Two files need to change.
+The configuration uses the deb822 format that Proxmox VE 9 ships with. **deb822** is a multi-line apt sources format with named fields (`Types:`, `URIs:`, `Suites:`, `Components:`, `Signed-By:`) instead of the single-line `deb URI suite component` syntax used in older Debian releases. Two files need to change.
 
 Replace `/etc/apt/sources.list.d/pve-enterprise.sources` with:
 
@@ -106,9 +106,9 @@ apt upgrade
 
 Read the summary before pressing `Y`. Pay attention to three things. The number of packages being upgraded should match what `apt list --upgradable` showed. A new kernel package such as `proxmox-kernel-6.17.13-2-pve-signed` in the dependencies means a reboot is required afterward. Any package in the `Not upgrading:` list is held back deliberately, typically because a dependency transition prevents a straight upgrade.
 
-When `apt-listchanges` pauses to display news from a specific package, read the notice if relevant, then press `q` to continue. This happens most commonly for `amd64-microcode` releases that carry CPU security bulletins.
+When `apt-listchanges` pauses to display news from a specific package, read the notice if relevant, then press `q` to continue. **`apt-listchanges`** is a Debian tool that pauses an upgrade to show release notes or news bundled with a package, so the operator can read about behavior changes before the upgrade applies. This happens most commonly for `amd64-microcode` releases that carry CPU security bulletins.
 
-If the `Not upgrading:` list contains ZFS packages and this host uses ZFS, resolve the held-back upgrades separately with `apt full-upgrade`. The `full-upgrade` variant is willing to install and remove packages to satisfy dependency transitions, which is what ZFS library version bumps often require. Read the summary of proposed removals carefully before confirming. If this host does not use ZFS, the held-back packages can be left as they are or removed entirely. On this project the host runs on LVM-thin and the ZFS packages were upgraded for consistency only.
+If the `Not upgrading:` list contains ZFS packages and this host uses ZFS, resolve the held-back upgrades separately with `apt full-upgrade`. **ZFS** is an advanced filesystem with built-in volume management, snapshots, and data-integrity checking, commonly used as an alternative to LVM-thin on Proxmox. The `full-upgrade` variant is willing to install and remove packages to satisfy dependency transitions, which is what ZFS library version bumps often require. Read the summary of proposed removals carefully before confirming. If this host does not use ZFS, the held-back packages can be left as they are or removed entirely. On this project the host runs on LVM-thin and the ZFS packages were upgraded for consistency only.
 
 Reboot.
 
@@ -126,15 +126,15 @@ pveversion
 apt list --upgradable
 ```
 
-The kernel version returned by `uname -r` should match the new kernel that was installed. `pveversion` should report the expected Proxmox version, for example `pve-manager/9.1.7` or later. `apt list --upgradable` should return an empty list, which confirms the system is fully converged.
+The kernel version returned by `uname -r` should match the new kernel that was installed. `pveversion` should report `pve-manager/9.1.7`, the exact version this host runs after the upgrade on 2026-04-20. `apt list --upgradable` should return an empty list, which confirms the system is fully converged.
 
-Note: the message `No /etc/kernel/proxmox-boot-uuids found, skipping ESP sync` may appear during the upgrade on hosts installed on LVM-thin rather than ZFS with a systemd-boot setup. It is informational, not an error, and can be ignored on such hosts.
+Note: the message `No /etc/kernel/proxmox-boot-uuids found, skipping ESP sync` may appear during the upgrade on hosts installed on LVM-thin rather than ZFS with a systemd-boot setup. **ESP sync** is Proxmox's mechanism for copying the kernel into multiple EFI System Partitions on disks that boot through systemd-boot, and the file `proxmox-boot-uuids` lists which partitions to update. On an LVM-thin install with GRUB (this project's layout), neither file exists and the message is informational, not an error, and can be ignored.
 
 ## Step 6. Create a sudo user and disable root SSH
 
 Daily administration should not happen as `root`. A mistyped command as root can destroy the whole host, including every VM on it. Requiring an explicit `sudo` step gives the administrator a moment to reconsider before running a privileged command. Separate accounts per team member also make the audit log meaningful, since each action is attributed to a named user rather than to the shared `root` account.
 
-Disabling root over SSH removes the most commonly attacked account from any brute-force attempt over the network, and aligns with standard SSH hardening recommendations from CIS Benchmarks and the `devsec.hardening` Ansible collection.
+Disabling root over SSH removes the most commonly attacked account from any brute-force attempt over the network, and aligns with standard SSH hardening recommendations from CIS Benchmarks and the `devsec.hardening` Ansible collection. **CIS Benchmarks** are the Center for Internet Security's vendor-neutral hardening guidelines for operating systems, browsers, and cloud platforms. **`devsec.hardening`** is a set of Ansible roles maintained by the DevSec project that implement CIS-aligned baselines automatically.
 
 The sequence is deliberate. Create the new user, grant sudo, install the `sudo` package if it is missing, verify the new path works end to end, and only then disable root login. Reversing the order risks being locked out of the host.
 
@@ -265,7 +265,7 @@ This setup leaves the Proxmox web UI on a self-signed certificate. Replacing it 
 
 Once the host is configured, the project continues with Tailscale for remote access to the web UI. That procedure is documented separately in [Tailscale on the Proxmox host](tailscale-on-host.md).
 
-> **Note (2026-05-14):** The host still runs Tailscale for administrative SSH access, but the subnet router role (advertising `192.168.50.0/24` to the tailnet) was moved to a dedicated `tailscale-gw` LXC at `192.168.50.5`. This was done after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter dropped return traffic for HTTP-style connections. See `bugfix-session-2026-05-14.md` for details.
+> **Note (2026-05-14):** The host still runs Tailscale for administrative SSH access, but the subnet router role (advertising `192.168.50.0/24` to the tailnet) was moved to a dedicated `tailscale-gw` LXC at `192.168.50.5`. This was done after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter dropped return traffic for HTTP-style connections. Build steps for the LXC are in `tailscale-gw-lxc.md`, and the full conntrack diagnosis is in `bugfix-session-2026-05-14.md`.
 
 ## References
 
