@@ -2,7 +2,7 @@
 
 This document explains how we installed Tailscale on our Proxmox VE host, and why. The goal is to give both team members remote access to the Proxmox web interface without exposing port 8006 to the internet.
 
-> **Update 2026-05-14:** The host still runs Tailscale, but no longer acts as a subnet router for the LAN. That role was moved to a dedicated `tailscale-gw` LXC container at `192.168.50.5` after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter caused return traffic from VMs to be dropped. The host remains on the tailnet as a regular member, used for administrative SSH access to the hypervisor itself. The rest of this document still applies to the host's own Tailscale installation — the migration of the subnet router is documented in `bugfix-session-2026-05-14.md`.
+> **Update 2026-05-14:** The host still runs Tailscale, but no longer acts as a subnet router for the LAN. That role was moved to a dedicated `tailscale-gw` LXC container at `192.168.50.5` after a conntrack synchronization bug between the host's firewall and Tailscale's stateful filter caused return traffic from VMs to be dropped. The host remains on the tailnet as a regular member, used for administrative SSH access to the hypervisor itself. The rest of this document still applies to the host's own Tailscale installation — the build steps for the LXC are in `tailscale-gw-lxc.md`, and the conntrack diagnosis that motivated the migration is in `bugfix-session-2026-05-14.md`.
 
 ## Overview
 
@@ -153,7 +153,7 @@ The default configuration requires an admin to approve new devices before they c
 
 ## Subnet routing
 
-**Status 2026-05-14:** Subnet routing is no longer performed by the host. A dedicated `tailscale-gw` LXC container at `192.168.50.5` advertises `192.168.50.0/24` instead. The host's `--advertise-routes` flag has been removed and its route has been un-approved in the Tailscale admin UI.
+**Status 2026-05-14:** Subnet routing is no longer performed by the host. A dedicated `tailscale-gw` LXC container at `192.168.50.5` advertises `192.168.50.0/24` instead. The host's `--advertise-routes` flag has been removed and its route has been un-approved in the Tailscale admin UI. Build steps for that container are in `tailscale-gw-lxc.md`.
 
 **Why the migration:** The original setup (described below for historical reference) hit a bug where return traffic from VMs to laptops was silently dropped. The host's own firewall (Proxmox/nftables) and Tailscale's stateful filter held independent conntrack tables that did not stay synchronized. When a VM replied to a laptop's request, the response matched the host's conntrack but not Tailscale's, so Tailscale dropped it. SSH happened to work because of how stateful filtering treats long-lived sessions; HTTP and other short-lived flows failed. Moving the subnet router to a dedicated container with no other firewall responsibilities eliminated the conflict. See `bugfix-session-2026-05-14.md` for the full diagnosis.
 
