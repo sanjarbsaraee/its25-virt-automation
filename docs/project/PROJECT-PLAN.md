@@ -203,63 +203,16 @@ This chapter describes the end goal, the architecture in place after iteration 5
 
 ### 3.1 Final architecture, overview
 
-```mermaid
-flowchart TB
-    subgraph Internet["Internet"]
-        UserBrowser[User's browser]
-    end
+![Final architecture after iteration 5](../topologi/iter-5-monitoring.png)
 
-    subgraph CloudServices["External SaaS"]
-        GitHub[(GitHub<br/>its25-virt-automation)]
-        HCP[(HCP Terraform<br/>state backend)]
-        Infisical[(Infisical<br/>secrets)]
-    end
-
-    subgraph Tailnet["Tailscale tailnet (sanjarbsaraee.github)"]
-        SanjarLaptop[Sanjar's laptop<br/>100.86.95.11]
-        JimLaptop[Jim's laptop<br/>100.67.132.15]
-    end
-
-    subgraph Host["Proxmox VE 9.1 host (GEEKOM A5)"]
-        PVE[Proxmox host<br/>192.168.50.197<br/>100.94.227.10]
-        Agent[HCP self-hosted agent<br/>tfc-agent service]
-
-        subgraph LAN["LAN 192.168.50.0/24"]
-            CN[control-node<br/>Ansible]
-            LB[lb-01<br/>Nginx LB]
-            WEB1[web-01<br/>Flask]
-            WEB2[web-02<br/>Flask]
-            DB[db-01<br/>PostgreSQL]
-            MON[monitor-01<br/>Prometheus + Grafana]
-        end
-    end
-
-    UserBrowser --> LB
-    LB --> WEB1
-    LB --> WEB2
-    WEB1 --> DB
-    WEB2 --> DB
-
-    SanjarLaptop -.SSH/HTTPS via Tailscale.-> PVE
-    JimLaptop -.SSH/HTTPS via Tailscale.-> PVE
-    SanjarLaptop -.git push HTTPS.-> GitHub
-    JimLaptop -.git push HTTPS.-> GitHub
-    SanjarLaptop -.terraform CLI.-> HCP
-    JimLaptop -.terraform CLI.-> HCP
-    HCP -.sends jobs.-> Agent
-    Agent -.terraform apply via Tailscale.-> PVE
-    Agent -.fetch secrets HTTPS.-> Infisical
-
-    CN -.Ansible SSH.-> WEB1
-    CN -.Ansible SSH.-> WEB2
-    CN -.Ansible SSH.-> DB
-    CN -.Ansible SSH.-> LB
-
-    WEB1 -.metrics.-> MON
-    WEB2 -.metrics.-> MON
-    DB -.metrics.-> MON
-    LB -.metrics.-> MON
-```
+The diagram shows the state after iteration 5. Traffic from the public
+internet enters through lb-01 (Nginx), is round-robined to web-01 or
+web-02 (Flask), which talk to db-01 (PostgreSQL 16) over TLS. Every VM
+exports metrics to monitor-01 (Prometheus + Grafana + Alertmanager).
+Operators reach the host and all VMs through the Tailscale mesh via the
+`tailscale-gw` LXC subnet router. Terraform runs through HCP Terraform's
+self-hosted agent on the host; secrets are fetched from Infisical at
+apply time.
 
 ### 3.2 Components, what each VM does
 
